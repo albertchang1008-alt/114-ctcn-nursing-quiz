@@ -57,9 +57,263 @@
         /* 管理人登入 modal */
         #admin-modal{display:none;}
         #admin-modal.open{display:flex;}
+
+        /* v1.915 第三種前端風格：夜讀深色 */
+        :root {
+            --night-bg: #05070d;
+            --night-panel: #0b1120;
+            --night-card: #131c30;
+            --night-card-2: #0f172a;
+            --night-border: #1f2b44;
+            --night-border-soft: rgba(148,163,184,.22);
+            --night-text: #e2e8f0;
+            --night-muted: #94a3b8;
+            --night-dim: #64748b;
+            --night-cyan: #38bdf8;
+            --night-pink: #f472b6;
+            --night-green: #34d399;
+            --night-red: #fb7185;
+        }
+        body.night-study {
+            background:
+                radial-gradient(circle at top, rgba(56,189,248,.12), transparent 32rem),
+                var(--night-bg);
+            color: var(--night-text);
+        }
+        body.night-study #app { max-width: 56rem; }
+        body.night-study #main-title {
+            color: var(--night-pink) !important;
+            letter-spacing: 0;
+            text-shadow: 0 0 24px rgba(244,114,182,.28);
+        }
+        body.night-study footer { color: var(--night-dim); }
+        body.night-study section.bg-white,
+        body.night-study #login-info-section,
+        body.night-study #topic-section,
+        body.night-study #quiz-section,
+        body.night-study #flashcard-section,
+        body.night-study #flashcard-done-section,
+        body.night-study #flashcard-loading-section,
+        body.night-study #submitting-section,
+        body.night-study #kicked-section,
+        body.night-study #result-section > div,
+        body.night-study #review-answers-container {
+            background: rgba(11,17,32,.94) !important;
+            border-color: var(--night-border) !important;
+            box-shadow: 0 24px 70px -44px rgba(56,189,248,.75) !important;
+            color: var(--night-text) !important;
+        }
+        body.night-study .bg-white { background-color: var(--night-panel) !important; }
+        body.night-study .bg-gray-50,
+        body.night-study .bg-slate-100,
+        body.night-study .bg-sky-50,
+        body.night-study .bg-rose-50,
+        body.night-study .bg-purple-50,
+        body.night-study .bg-green-50,
+        body.night-study .bg-amber-50,
+        body.night-study .bg-indigo-50 {
+            background-color: rgba(19,28,48,.82) !important;
+        }
+        body.night-study .border,
+        body.night-study .border-b,
+        body.night-study .border-t,
+        body.night-study .border-gray-100,
+        body.night-study .border-gray-200,
+        body.night-study .border-pink-100,
+        body.night-study .border-sky-100,
+        body.night-study .border-sky-200,
+        body.night-study .border-rose-200,
+        body.night-study .border-purple-200,
+        body.night-study .border-green-200,
+        body.night-study .border-amber-200 {
+            border-color: var(--night-border) !important;
+        }
+        body.night-study .text-gray-800,
+        body.night-study .text-gray-700,
+        body.night-study .text-slate-600,
+        body.night-study .text-slate-700 {
+            color: var(--night-text) !important;
+        }
+        body.night-study .text-gray-600,
+        body.night-study .text-gray-500,
+        body.night-study .text-gray-400,
+        body.night-study .text-sky-500 {
+            color: var(--night-muted) !important;
+        }
+        body.night-study .text-pink-600,
+        body.night-study .text-pink-800,
+        body.night-study .text-pink-400 { color: var(--night-pink) !important; }
+        body.night-study .text-sky-600,
+        body.night-study .text-sky-700,
+        body.night-study .text-blue-600 { color: var(--night-cyan) !important; }
+        body.night-study .bg-pink-100,
+        body.night-study .bg-purple-100 {
+            background-color: rgba(244,114,182,.12) !important;
+        }
+        body.night-study .bg-sky-100,
+        body.night-study .bg-blue-100 {
+            background-color: rgba(56,189,248,.12) !important;
+        }
+        body.night-study input,
+        body.night-study select,
+        body.night-study textarea {
+            background: var(--night-card) !important;
+            border-color: var(--night-border) !important;
+            color: var(--night-text) !important;
+        }
+        body.night-study input::placeholder,
+        body.night-study textarea::placeholder { color: var(--night-dim) !important; }
+        body.night-study .loader {
+            border-color: #1e293b;
+            border-top-color: var(--night-pink) !important;
+        }
+        body.night-study .subject-btn {
+            background: var(--night-card) !important;
+            border-color: var(--night-border) !important;
+            color: var(--night-text) !important;
+        }
+        body.night-study .subject-btn.bg-sky-500 {
+            background: linear-gradient(135deg, #0284c7, var(--night-cyan)) !important;
+            border-color: var(--night-cyan) !important;
+            color: #04111f !important;
+            box-shadow: 0 0 24px -8px rgba(56,189,248,.85);
+        }
+        body.night-study .chapter-row {
+            background: var(--night-card) !important;
+            border-color: rgba(56,189,248,.22) !important;
+            box-shadow: inset 0 0 0 1px rgba(148,163,184,.06);
+        }
+        body.night-study .chapter-row:hover {
+            border-color: rgba(56,189,248,.55) !important;
+            box-shadow: 0 0 26px -16px rgba(56,189,248,.9);
+        }
+        body.night-study .chapter-title { color: var(--night-text) !important; }
+        body.night-study .chapter-meta,
+        body.night-study .chapter-time { color: var(--night-muted) !important; }
+        body.night-study .chapter-track { background: #1e293b !important; }
+        body.night-study .chapter-fill {
+            background: linear-gradient(90deg, var(--night-cyan), #22d3ee) !important;
+            box-shadow: 0 0 12px rgba(56,189,248,.5);
+        }
+        body.night-study .quiz-btn {
+            background: var(--night-red) !important;
+            color: #fff !important;
+            box-shadow: 0 0 18px -8px rgba(251,113,133,.9);
+        }
+        body.night-study .fc-btn {
+            background: rgba(56,189,248,.1) !important;
+            color: var(--night-cyan) !important;
+            border-color: rgba(56,189,248,.35) !important;
+        }
+        body.night-study .handout-btn {
+            background: rgba(52,211,153,.1) !important;
+            color: var(--night-green) !important;
+            border: 1.5px solid rgba(52,211,153,.35) !important;
+            box-shadow: 0 0 18px -10px rgba(52,211,153,.9);
+        }
+        body.night-study .handout-btn:hover {
+            background: rgba(52,211,153,.18) !important;
+            border-color: rgba(52,211,153,.65) !important;
+        }
+        body.night-study .option-btn {
+            background: var(--night-card) !important;
+            border: 1.5px solid var(--night-border) !important;
+            color: #cbd5e1 !important;
+            border-radius: 18px !important;
+            padding: 1rem !important;
+        }
+        body.night-study .option-btn:hover:not(:disabled) {
+            border-color: rgba(56,189,248,.55) !important;
+            background: rgba(14,165,233,.12) !important;
+        }
+        body.night-study .option-btn.option-picked {
+            background: rgba(14,165,233,.16) !important;
+            border-color: var(--night-cyan) !important;
+            color: #e0f2fe !important;
+            box-shadow: 0 0 0 1px var(--night-cyan), 0 0 26px -8px rgba(56,189,248,.72);
+        }
+        body.night-study .option-btn.option-muted {
+            background: rgba(19,28,48,.72) !important;
+            color: var(--night-muted) !important;
+            opacity: .82;
+        }
+        body.night-study #quiz-prev-btn,
+        body.night-study #quiz-next-btn,
+        body.night-study #finish-btn-area button,
+        body.night-study #login-btn {
+            box-shadow: 0 0 24px -10px rgba(56,189,248,.85);
+        }
+        body.night-study #quiz-next-btn,
+        body.night-study #login-btn,
+        body.night-study .bg-sky-500 {
+            background-color: var(--night-cyan) !important;
+            color: #04293f !important;
+        }
+        body.night-study #quiz-prev-btn {
+            background: var(--night-card) !important;
+            border-color: var(--night-border) !important;
+            color: var(--night-muted) !important;
+        }
+        body.night-study #finish-btn-area button,
+        body.night-study .bg-pink-500 {
+            background-color: var(--night-pink) !important;
+            color: #180617 !important;
+        }
+        body.night-study #combo-modal > div,
+        body.night-study #wrong-fc-modal > div,
+        body.night-study #quiz-count-modal > div,
+        body.night-study #admin-modal > div {
+            background: var(--night-panel) !important;
+            border: 1px solid var(--night-border);
+            color: var(--night-text);
+        }
+        body.night-study #version-badge,
+        body.night-study footer span,
+        body.night-study footer button { color: rgba(148,163,184,.42) !important; }
+        #style-toggle-btn {
+            position: fixed;
+            top: 14px;
+            right: 14px;
+            z-index: 60;
+            border: 1px solid rgba(14,165,233,.25);
+            background: rgba(255,255,255,.88);
+            color: #0369a1;
+            backdrop-filter: blur(12px);
+            border-radius: 999px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 800;
+            box-shadow: 0 10px 30px -18px rgba(15,23,42,.6);
+        }
+        body.night-study #style-toggle-btn {
+            background: rgba(15,23,42,.76);
+            color: var(--night-cyan);
+            border-color: rgba(56,189,248,.38);
+            box-shadow: 0 0 22px -10px rgba(56,189,248,.9);
+        }
+        @media (max-width: 640px) {
+            #style-toggle-btn {
+                top: 10px;
+                right: 10px;
+                padding: 7px 10px;
+                font-size: 11px;
+            }
+        }
+        @media (hover: none) {
+            body.night-study .option-btn:hover {
+                background: var(--night-card) !important;
+                border-color: var(--night-border) !important;
+                color: #cbd5e1 !important;
+            }
+            body.night-study .option-btn.option-picked:hover {
+                background: rgba(14,165,233,.16) !important;
+                border-color: var(--night-cyan) !important;
+                color: #e0f2fe !important;
+            }
+        }
     </style>
 </head>
-<body class="bg-gray-50 min-h-screen text-gray-800 flex flex-col">
+<body class="night-study bg-slate-950 min-h-screen text-slate-100 flex flex-col">
 
 <!-- ★ v1.3 固定頂部倒數計時器 -->
 <div id="deadline-bar" class="hidden fixed top-0 left-0 right-0 z-50 text-center text-sm font-bold py-2 px-4 shadow-md"
@@ -69,6 +323,8 @@
   <span id="deadline-countdown" class="ml-1 font-mono tracking-wide"></span>
 </div>
 <div id="deadline-spacer" class="hidden" style="height:38px;"></div>
+
+<button id="style-toggle-btn" type="button" onclick="toggleStudyStyle()" aria-label="切換前端風格">淺色</button>
 
 <!-- ══════════════════════════════════════════ -->
 <!--              學生端介面                    -->
@@ -413,7 +669,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.912 ／ Google 登入 + Firebase-first">v1.912</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.915 ／ Google 登入 + Firebase-first">v1.915</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1272,7 +1528,38 @@ let progressChartInst = null;
 let topicChartInst    = null;
 let teacherData       = null;
 
-document.addEventListener('DOMContentLoaded', fetchQuestionBank);
+const STYLE_PREF_KEY = "quiz_v19_frontend_style";
+
+function applyStudyStyle(style) {
+    const mode = style === "light" ? "light" : "night";
+    document.body.classList.toggle("night-study", mode === "night");
+    document.body.classList.toggle("bg-slate-950", mode === "night");
+    document.body.classList.toggle("text-slate-100", mode === "night");
+    document.body.classList.toggle("bg-gray-50", mode === "light");
+    document.body.classList.toggle("text-gray-800", mode === "light");
+    const btn = document.getElementById("style-toggle-btn");
+    if (btn) {
+        btn.textContent = mode === "night" ? "淺色" : "夜讀";
+        btn.title = mode === "night" ? "切換成淺色風格" : "切換成夜讀風格";
+    }
+}
+
+function loadStudyStylePreference() {
+    let saved = "";
+    try { saved = localStorage.getItem(STYLE_PREF_KEY) || ""; } catch (err) {}
+    applyStudyStyle(saved === "light" ? "light" : "night");
+}
+
+function toggleStudyStyle() {
+    const next = document.body.classList.contains("night-study") ? "light" : "night";
+    try { localStorage.setItem(STYLE_PREF_KEY, next); } catch (err) {}
+    applyStudyStyle(next);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStudyStylePreference();
+    fetchQuestionBank();
+});
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
 });
@@ -1618,6 +1905,14 @@ function renderTopics() {
         const chapterName = getTopicChapterName(topicMeta);
         const chapterId = String(topicMeta.chapterId || "").trim();
         const displayTitle = chapterId ? `${chapterId} ${chapterName}` : chapterName;
+        const lectureUrl = String(topicMeta.lectureUrl || questionList.find(q => q.lectureUrl)?.lectureUrl || "").trim();
+        const lectureTitle = String(topicMeta.lectureTitle || questionList.find(q => q.lectureTitle)?.lectureTitle || "講義").trim();
+        const lectureButton = lectureUrl
+            ? `<button class="handout-btn" data-url="${escapeHtml(lectureUrl)}" title="${escapeHtml(lectureTitle)}"
+                    style="background:rgba(16,185,129,0.1);color:#059669;border:1.5px solid rgba(16,185,129,0.25);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:700;cursor:pointer;">
+                    講義
+                </button>`
+            : "";
         const row   = document.createElement("div");
 
         // 分數標籤 HTML
@@ -1636,7 +1931,7 @@ function renderTopics() {
         // ★ v1.6 平均每題用時標籤
         const avgSec = comp?.avgSec;
         const timeLabel = avgSec != null
-            ? `<span style="font-size:10px;color:#64748b;margin-left:4px;">⏱ 均${avgSec}秒/題</span>`
+            ? `<span class="chapter-time" style="font-size:10px;color:#64748b;margin-left:4px;">⏱ 均${avgSec}秒/題</span>`
             : "";
 
         // ★ 方案 C：未達標加閃卡提示文字（needsReview 必須在 borderColor 之前定義）
@@ -1645,24 +1940,26 @@ function renderTopics() {
             ? `<div style="font-size:10px;color:#dc2626;margin-top:3px;font-weight:600;">💡 建議閃卡複習</div>`
             : "";
         const borderColor = needsReview ? "rgba(239,68,68,0.35)" : hexToRgba(hex, 0.3);
+        row.className = "chapter-row";
         row.style.cssText = `border:1.5px solid ${borderColor};border-radius:12px;overflow:hidden;background:white;`;
 
         row.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;gap:10px;">
                 <div style="flex:1;min-width:0;overflow:hidden;">
-                    <div style="font-size:14px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(displayTitle)}${timeLabel}</div>
-                    <div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b;flex-wrap:wrap;">
+                    <div class="chapter-title" style="font-size:14px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(displayTitle)}${timeLabel}</div>
+                    <div class="chapter-meta" style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b;flex-wrap:wrap;">
                         <span>已做 ${attemptedCount} / ${totalQuestions} 題</span>
                         <span>完成度 ${completePct}%</span>
                         ${comp?.best != null ? `<span>最高 ${comp.best} 分</span>` : `<span>尚未測驗</span>`}
                     </div>
-                    <div style="height:5px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:7px;">
-                        <div style="height:5px;width:${completePct}%;background:${hex};border-radius:999px;"></div>
+                    <div class="chapter-track" style="height:5px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:7px;">
+                        <div class="chapter-fill" style="height:5px;width:${completePct}%;background:${hex};border-radius:999px;"></div>
                     </div>
                     ${fcHint}
                 </div>
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
                     ${scoreBadge}
+                    ${lectureButton}
                     <button class="quiz-btn" data-topic="${topic}"
                         style="background:${hex};color:white;border:none;border-radius:8px;padding:5px 13px;font-size:12px;font-weight:700;cursor:pointer;">
                         測驗
@@ -1674,6 +1971,13 @@ function renderTopics() {
                 </div>
             </div>
         `;
+        const handoutBtn = row.querySelector(".handout-btn");
+        if (handoutBtn) {
+            handoutBtn.onclick = (e) => {
+                e.stopPropagation();
+                window.open(handoutBtn.dataset.url, "_blank", "noopener");
+            };
+        }
         row.querySelector(".quiz-btn").onclick = () => openQuizCountModal(topic, topicMeta);
         row.querySelector(".fc-btn").onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
         div.appendChild(row);
@@ -1896,6 +2200,8 @@ async function loadTopicQuestions(topic, flashcard, requestedCount = null) {
         socraticHint3: item.socraticHint3 || "",
         remedialChapter: item.remedialChapter || "",
         remedialUrl: item.remedialUrl || "",
+        lectureTitle: item.lectureTitle || item.handoutTitle || "",
+        lectureUrl: item.lectureUrl || item.handoutUrl || "",
     }));
 }
 
@@ -1951,6 +2257,8 @@ function prepareQuiz(sources) {
         socraticHint3:  src.socraticHint3 || "",
         remedialChapter: src.remedialChapter || "",
         remedialUrl:    src.remedialUrl || "",
+        lectureTitle:   src.lectureTitle || "",
+        lectureUrl:     src.lectureUrl || "",
         userSelectedIndex:   null,
         userSelectedText:    "",
         isCorrectlyAnswered: false,
@@ -2022,10 +2330,10 @@ function renderQuestion() {
         if (selectedAnswered) {
             btn.disabled = true;
             if (idx === q.userSelectedIndex) {
-                btn.className = "option-btn w-full text-left border-2 border-sky-400 bg-sky-50 text-sky-700 font-bold rounded-xl p-4";
+            btn.className = "option-btn option-picked w-full text-left border-2 border-sky-400 bg-sky-50 text-sky-700 font-bold rounded-xl p-4";
                 btn.textContent = `已選：${optText}`;
             } else {
-                btn.className = "option-btn w-full text-left bg-gray-50 border border-gray-100 text-gray-500 font-medium rounded-xl p-4";
+                btn.className = "option-btn option-muted w-full text-left bg-gray-50 border border-gray-100 text-gray-500 font-medium rounded-xl p-4";
                 btn.textContent = `• ${optText}`;
             }
         } else {
@@ -2242,6 +2550,8 @@ function showResults(scoreCorrect) {
         socraticHint3: q.socraticHint3 || "",
         remedialChapter: q.remedialChapter || "",
         remedialUrl: q.remedialUrl || "",
+        lectureTitle: q.lectureTitle || "",
+        lectureUrl: q.lectureUrl || "",
     }));
 
     submitAttemptCloud({
@@ -3276,7 +3586,9 @@ function normalizePracticeQuestion(item, idx = 0) {
         socraticHint2: item.socraticHint2 || "",
         socraticHint3: item.socraticHint3 || "",
         remedialChapter: item.remedialChapter || "",
-        remedialUrl: item.remedialUrl || ""
+        remedialUrl: item.remedialUrl || "",
+        lectureTitle: item.lectureTitle || item.handoutTitle || "",
+        lectureUrl: item.lectureUrl || item.handoutUrl || ""
     };
 }
 

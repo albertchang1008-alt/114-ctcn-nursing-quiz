@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.912</p>
+                <p class="font-bold text-gray-800">v1.915</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.912 ／ Google 登入 + Firebase">v1.912</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.915 ／ Google 登入 + Firebase">v1.915</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1041,7 +1041,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.912";
+    document.title = "教師後台 - 題庫系統 v1.915";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
@@ -1103,7 +1103,7 @@ async function fetchQuestionBank() {
         show("login-section");
         document.getElementById("input-id").focus();
 
-        // v1.912：班級排行與今日人數快取先取消，避免為排行榜增加讀寫成本。
+        // v1.915：班級排行與今日人數快取先取消，避免為排行榜增加讀寫成本。
         // 速度與正確性分析改保留在 answerBatches.detailsJson，未來由後台分析頁批次產生。
         hide("ranking-section");
     } catch (err) {
@@ -2026,7 +2026,7 @@ function renderMyCompletion(data) {
 }
 
 async function loadCompletionRanking(todayOnly = false) {
-    // v1.912：班級排行與今日人數功能先取消，不再呼叫 GAS / Firebase 快取。
+    // v1.915：班級排行與今日人數功能先取消，不再呼叫 GAS / Firebase 快取。
     return;
     try {
         const res = await postGAS({ action: "getCompletionRanking" });

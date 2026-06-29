@@ -1,4 +1,4 @@
-# 題庫系統 v1.912 佈建說明
+# 題庫系統 v1.915 佈建說明
 
 ## 文件維護規則
 
@@ -15,14 +15,14 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.912
+版本：v1.915
 日期：2026-06-29
-重點：修正測驗作答中提前顯示正解，以及綜合練習認知類型只顯示部分章節的問題。
+重點：加入第三種夜讀深色前端、右上角風格切換，以及章節講義連結。
 ```
 
 ## 版本定位
 
-v1.912 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Google 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
+v1.915 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Google 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
 
 ## 手機 Google 登入注意事項
 
@@ -145,9 +145,9 @@ v1.911 起，學生端不再自動展開章節。進入主選單後流程為：
 
 答題中不會寫入 Firebase。學生完成全部題目並按送出後，才一次寫入 `answerBatches`，並更新 `studentProgress` 的成績摘要、完成度與 `attemptedQuestions`。
 
-### v1.912 測驗畫面修正
+### v1.913 測驗畫面修正
 
-v1.912 已處理下列兩項畫面問題：
+v1.913 已處理下列兩項畫面問題：
 
 ```text
 測驗作答中不再立即顯示紅色錯誤與綠色正解。
@@ -156,6 +156,35 @@ v1.912 已處理下列兩項畫面問題：
 綜合練習分類清單改用完整題庫快取彙整認知類型，不再被上一個章節載入狀態影響。
 若某分類沒有認知類型資料，會顯示「尚未標註認知類型」。
 ```
+
+### v1.915 前端風格與講義連結
+
+v1.915 將學生端預設切換為第三種「夜讀深色」風格，右上角提供風格切換按鈕：
+
+```text
+夜讀模式：預設深色介面
+淺色模式：切回原本較亮的介面
+```
+
+學生的選擇會存在瀏覽器 `localStorage`，重新整理後仍保留上次選擇。
+
+章節清單支援講義連結。Google Sheet 題庫分頁可新增：
+
+```text
+講義標題
+講義連結
+```
+
+英文欄位也可使用：
+
+```text
+lectureTitle
+lectureUrl
+handoutTitle
+handoutUrl
+```
+
+同一章節只要任一題填入講義連結，同步到 Firebase 後，學生端該章節右側會顯示「講義」按鈕，點擊後以新分頁開啟。
 
 ## 後台入口
 
@@ -226,7 +255,7 @@ README
 5. 執行：
 
 ```text
-createQuestionBankSystemSheetV1907
+createQuestionBankSystemSheetV1915
 ```
 
 6. 第一次執行會要求授權。
@@ -235,7 +264,7 @@ createQuestionBankSystemSheetV1907
 若你已經有一份空白 Google Sheet，也可以在該 Sheet 的 Apps Script 中貼上此檔，執行：
 
 ```text
-setupCurrentSpreadsheetForQuestionBankSystemV1907
+setupCurrentSpreadsheetForQuestionBankSystemV1915
 ```
 
 它會在目前試算表直接建立必要分頁。
@@ -282,6 +311,8 @@ subjectId
 subjectName
 chapterId
 chapterName
+lectureTitle
+lectureUrl
 topic
 category
 subCategory
@@ -597,7 +628,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.912"
+git commit -m "Release v1.915"
 git push
 ```
 

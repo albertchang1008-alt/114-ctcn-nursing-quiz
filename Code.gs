@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.912 slim
+// Google Apps Script — 題庫系統 v1.915 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -21,7 +21,7 @@ function doGet(e) {
   return jsonResponse({
     status: "ok",
     service: "quiz-gas-slim",
-    version: "v1.912",
+    version: "v1.915",
     message: "學生端不使用 GAS；請由後台執行同步。"
   });
 }
@@ -261,6 +261,8 @@ function readQuestionsForFirebaseV19(ss) {
   var cHint3 = findColIdx(headers, ["③ 推回答案", "推回答案", "提示3", "提示 3", "hint3", "socraticHint3"]);
   var cRemedialChapter = findColIdx(headers, ["補救章節", "推薦章節", "remedialChapter"]);
   var cRemedialUrl = findColIdx(headers, ["推薦影片", "補救資源", "資源連結", "remedialUrl"]);
+  var cLectureTitle = findColIdx(headers, ["講義標題", "講義名稱", "lectureTitle", "handoutTitle"]);
+  var cLectureUrl = findColIdx(headers, ["講義連結", "講義網址", "講義URL", "lectureUrl", "handoutUrl", "handout"]);
 
   var version = "QB_" + sheet.getLastRow() + "_" + Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMddHHmmss");
   var out = [];
@@ -345,6 +347,8 @@ function readQuestionsForFirebaseV19(ss) {
       socraticHint3: getCell(row, cHint3),
       remedialChapter: getCell(row, cRemedialChapter) || chapter || category,
       remedialUrl: getCell(row, cRemedialUrl),
+      lectureTitle: getCell(row, cLectureTitle),
+      lectureUrl: getCell(row, cLectureUrl),
       questionBankVersion: version,
       updatedAtText: localNow()
     });
@@ -365,8 +369,12 @@ function buildTopics(questions) {
       chapterId: q.chapterId || "",
       chapterName: q.chapterName || q.chapter || q.category || q.top,
       chapter: q.chapter || q.chapterName || "",
-      category: q.category || q.top
+      category: q.category || q.top,
+      lectureTitle: q.lectureTitle || "",
+      lectureUrl: q.lectureUrl || ""
     };
+    if (!map[q.top].lectureUrl && q.lectureUrl) map[q.top].lectureUrl = q.lectureUrl;
+    if (!map[q.top].lectureTitle && q.lectureTitle) map[q.top].lectureTitle = q.lectureTitle;
     map[q.top].count += 1;
   });
   return Object.keys(map).sort(function(a, b) {
@@ -480,7 +488,7 @@ function buildFirebasePayloadV19() {
     settings: {
       title: title,
       titleColor: titleColor,
-      version: "v1.912",
+      version: "v1.915",
       authMode: "google",
       topics: topics,
       completionSettings: settings,
@@ -529,7 +537,7 @@ function handleSyncFirebaseV19(payload) {
     if (s.email && s.emailKey) writes.push({ update: { name: firestoreDocName(projectId, "studentsByEmail", s.emailKey), fields: firebaseFields(s) } });
   });
   writes.push({ update: { name: firestoreDocName(projectId, "syncStatus", "main"), fields: firebaseFields({
-    version: "v1.912",
+    version: "v1.915",
     mode: "slim",
     firebaseProjectId: projectId,
     lastQuestionSyncAt: localNow(),
@@ -543,7 +551,7 @@ function handleGetSyncStatusV19() {
   var props = PropertiesService.getScriptProperties();
   return jsonResponse({
     status: "ok",
-    version: "v1.912",
+    version: "v1.915",
     mode: "slim",
     firebaseProjectId: props.getProperty("FIREBASE_PROJECT_ID") || "",
     studentEmailCheck: validateStudentEmailsV19(),

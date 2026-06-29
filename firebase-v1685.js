@@ -88,6 +88,8 @@
       socraticHint3: q.socraticHint3 || q.hint3 || "",
       remedialChapter: q.remedialChapter || "",
       remedialUrl: q.remedialUrl || "",
+      lectureTitle: q.lectureTitle || q.handoutTitle || "",
+      lectureUrl: q.lectureUrl || q.handoutUrl || "",
       source: q.source || "firebase",
       questionBankVersion: q.questionBankVersion || q.version || ""
     };
@@ -105,8 +107,12 @@
         subjectName: q.subjectName || q.subject || "",
         chapterId: q.chapterId || "",
         chapterName: q.chapterName || q.chapter || "",
-        category: q.category || name
+        category: q.category || name,
+        lectureTitle: q.lectureTitle || "",
+        lectureUrl: q.lectureUrl || ""
       };
+      if (!map[name].lectureUrl && q.lectureUrl) map[name].lectureUrl = q.lectureUrl;
+      if (!map[name].lectureTitle && q.lectureTitle) map[name].lectureTitle = q.lectureTitle;
       map[name].count += 1;
     });
     return Object.keys(map).sort(function (a, b) {
@@ -127,7 +133,7 @@
       var s = await docPath(c.settings || "system/main").get();
       if (s.exists) settings = s.data() || {};
     } catch (err) {
-      console.warn("[v1.912] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.915] Firebase 設定讀取失敗，略過：", err);
     }
     var activeQuestionBankVersion = settings.questionBankVersion || "";
     var snap = await db.collection(c.questions || "questions").get();
@@ -340,7 +346,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.912"
+      source: "self-register-v1.915"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -387,7 +393,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.912"
+      source: "firebase-v1.915"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -524,7 +530,7 @@
       lastScore: batch.score,
       updatedAt: nowField(),
       updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.912-progress"
+      source: "firebase-v1.915-progress"
     };
   }
 
@@ -589,7 +595,7 @@
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
       clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.912",
+      source: "firebase-v1.915",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
@@ -614,7 +620,9 @@
           questionType: d.questionType || "",
           cogType: d.cogType || "",
           socraticConcept: d.socraticConcept || "",
-          remedialChapter: d.remedialChapter || ""
+          remedialChapter: d.remedialChapter || "",
+          lectureTitle: d.lectureTitle || "",
+          lectureUrl: d.lectureUrl || ""
         };
       }))
     };
@@ -651,13 +659,15 @@
           difficulty: d.difficulty || "",
           importance: d.importance || "",
           cogType: d.cogType || "",
+          lectureTitle: d.lectureTitle || "",
+          lectureUrl: d.lectureUrl || "",
           correctText: d.correctText || "",
           selectedText: d.selectedText || "",
           lastWrongAt: nowField(),
           clientCreatedAt: new Date().toISOString(),
           lastBatchId: batchId,
           active: true,
-          source: "firebase-v1.912"
+          source: "firebase-v1.915"
         }, { merge: true });
         opCount++;
       }
@@ -705,7 +715,7 @@
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.912] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.915] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }
