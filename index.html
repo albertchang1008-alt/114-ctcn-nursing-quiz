@@ -413,7 +413,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.910 ／ Google 登入 + Firebase-first">v1.910</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.912 ／ Google 登入 + Firebase-first">v1.912</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1557,7 +1557,7 @@ function renderTopics() {
         subjectMap[key].topics.push(t);
     });
     const subjects = Object.values(subjectMap).sort((a, b) => naturalCompare(a.name, b.name));
-    if (!selectedSubjectKey || !subjectMap[selectedSubjectKey]) selectedSubjectKey = subjects[0]?.key || "";
+    if (selectedSubjectKey && !subjectMap[selectedSubjectKey]) selectedSubjectKey = "";
 
     if (subjectList) {
         subjectList.innerHTML = subjects.map(s => {
@@ -1575,8 +1575,18 @@ function renderTopics() {
         });
     }
 
-    const selectedSubject = subjectMap[selectedSubjectKey] || subjects[0];
-    if (subjectLabel) subjectLabel.textContent = selectedSubject ? selectedSubject.name : "";
+    const selectedSubject = selectedSubjectKey ? subjectMap[selectedSubjectKey] : null;
+    if (subjectLabel) subjectLabel.textContent = selectedSubject ? selectedSubject.name : "請先選擇科目";
+
+    if (!selectedSubject) {
+        div.innerHTML = `
+            <div class="rounded-xl border border-dashed border-sky-200 bg-sky-50/60 text-sky-700 px-4 py-8 text-center">
+                <div class="text-lg font-bold mb-1">請先點選上方科目</div>
+                <div class="text-sm text-sky-500">選定科目後，才會顯示該科目的章節、完成度與測驗入口。</div>
+            </div>
+        `;
+        return;
+    }
 
     // 取得各分類完成度資訊（含平均每題用時）
     const compMap = {};
@@ -2004,21 +2014,16 @@ function renderQuestion() {
 
     const container = document.getElementById("options-container");
     container.innerHTML = "";
-    const correctNorm = normalizeAnswerForCompare(q.ans);
     const selectedAnswered = q.userSelectedIndex !== null && q.userSelectedIndex !== undefined;
-    const correctIndex = q.shuffledOpts.findIndex(opt => normalizeAnswerForCompare(opt) === correctNorm);
     q.shuffledOpts.forEach((optText, idx) => {
         const btn = document.createElement("button");
         btn.className = "option-btn w-full text-left bg-white border border-gray-200 text-gray-700 font-medium rounded-xl p-4";
         btn.textContent = optText;
         if (selectedAnswered) {
             btn.disabled = true;
-            if (idx === correctIndex) {
-                btn.className = "option-btn w-full text-left border-2 border-green-400 bg-green-50 text-green-700 font-bold rounded-xl p-4";
-                btn.textContent = `✓ ${optText}`;
-            } else if (idx === q.userSelectedIndex) {
-                btn.className = "option-btn w-full text-left border-2 border-red-300 bg-red-50 text-red-600 font-semibold rounded-xl p-4";
-                btn.textContent = `✗ ${optText}`;
+            if (idx === q.userSelectedIndex) {
+                btn.className = "option-btn w-full text-left border-2 border-sky-400 bg-sky-50 text-sky-700 font-bold rounded-xl p-4";
+                btn.textContent = `已選：${optText}`;
             } else {
                 btn.className = "option-btn w-full text-left bg-gray-50 border border-gray-100 text-gray-500 font-medium rounded-xl p-4";
                 btn.textContent = `• ${optText}`;
@@ -2059,7 +2064,7 @@ function renderQuizNav() {
     const answerCount = document.getElementById("quiz-answer-count");
     const finished = total > 0 && answered === total;
 
-    if (answerCount) answerCount.textContent = `已作答 ${answered} / ${total}`;
+    if (answerCount) answerCount.textContent = `本次已作答 ${answered} / ${total}`;
     if (prevBtn) {
         prevBtn.disabled = currentQuestionIndex <= 0;
         prevBtn.classList.toggle("opacity-40", prevBtn.disabled);
@@ -2069,7 +2074,7 @@ function renderQuizNav() {
         nextBtn.disabled = !currentAnswered || currentQuestionIndex >= total - 1;
         nextBtn.classList.toggle("opacity-40", nextBtn.disabled);
         nextBtn.classList.toggle("cursor-not-allowed", nextBtn.disabled);
-        nextBtn.textContent = currentQuestionIndex >= total - 1 ? "最後一題" : "下一題 →";
+        nextBtn.textContent = currentQuestionIndex >= total - 1 ? "已到最後一題" : "下一題 →";
     }
     finished ? show("finish-btn-area") : hide("finish-btn-area");
 }
@@ -3395,33 +3400,41 @@ function tryOpenAdminModal() {
 // ══════════════════════════════════════════════
 //  綜合練習 Modal
 // ══════════════════════════════════════════════
+function getComboQuestionSource() {
+    return (allQuestionsForMenu && allQuestionsForMenu.length)
+        ? allQuestionsForMenu
+        : (allQuestionsData || []);
+}
+
 function openComboModal() {
     const modal = document.getElementById("combo-modal");
     modal.style.display = "flex";
 
-    // ★ 認知類型快速篩選（點擊後只勾選該類型的分類）
-    const cogTypes = [...new Set(topicsData.map(t => {
-        // 需從 allQuestionsData 找對應認知類型（若已載入）
-        return ""; // 先從分類資料中無法直接取得，建立後更新
-    }).filter(Boolean))];
-
-    // 從 allQuestionsData 收集每個分類對應的認知類型
+    // 從完整題庫快取收集每個分類對應的認知類型，避免被單一章節載入狀態污染。
+    const questionSource = getComboQuestionSource();
     const topicCogMap = {}; // topic → Set of cogTypes
-    allQuestionsData.forEach(q => {
+    questionSource.forEach(q => {
         if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
         if (q.cogType) topicCogMap[q.top].add(q.cogType);
     });
-    const allCogTypes = [...new Set(allQuestionsData.map(q => q.cogType).filter(Boolean))].sort();
+    const allCogTypes = [...new Set(questionSource.map(q => q.cogType).filter(Boolean))].sort();
 
     const cogFilterEl = document.getElementById("combo-cog-filter");
     cogFilterEl.innerHTML = allCogTypes.length === 0 ? "" : `
         <span class="text-xs text-gray-400 self-center">依認知類型快速篩選：</span>
         ${allCogTypes.map(cog => `
-        <button onclick="comboFilterByCog('${cog}')"
-            class="text-xs px-2.5 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition">
-            ${cog}
+        <button type="button" data-cog="${escapeHtml(cog)}"
+            class="combo-cog-btn text-xs px-2.5 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition">
+            ${escapeHtml(cog)}
         </button>`).join("")}
+        <button type="button" onclick="comboSelectAll(true)"
+            class="text-xs px-2.5 py-0.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100 transition">
+            全部認知類型
+        </button>
     `;
+    cogFilterEl.querySelectorAll(".combo-cog-btn").forEach(btn => {
+        btn.onclick = () => comboFilterByCog(btn.dataset.cog || "");
+    });
 
     // 渲染分類勾選列表（預設全選）
     const list = document.getElementById("combo-topic-list");
@@ -3431,14 +3444,14 @@ function openComboModal() {
         const dotClass = isHex ? "" : getTopicDotClass(color);
         const cogSet   = topicCogMap[name];
         const cogTag   = cogSet?.size > 0
-            ? [...cogSet].map(c => `<span class="text-xs text-violet-500">${c}</span>`).join(" · ")
-            : "";
+            ? [...cogSet].map(c => `<span class="text-xs text-violet-500">${escapeHtml(c)}</span>`).join(" · ")
+            : `<span class="text-xs text-gray-400">尚未標註認知類型</span>`;
         return `<label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2.5 hover:bg-gray-50 cursor-pointer transition">
-            <input type="checkbox" class="combo-topic-cb w-4 h-4 rounded accent-sky-500" value="${name}" checked>
+            <input type="checkbox" class="combo-topic-cb w-4 h-4 rounded accent-sky-500" value="${escapeHtml(name)}" checked>
             <span class="w-2.5 h-2.5 rounded-full shrink-0 ${dotClass}" style="${dotStyle}"></span>
             <span class="flex-1 min-w-0">
-                <span class="text-sm text-gray-700 block">${name}</span>
-                ${cogTag ? `<span class="text-xs text-violet-500">${cogTag}</span>` : ""}
+                <span class="text-sm text-gray-700 block">${escapeHtml(name)}</span>
+                <span class="text-xs">${cogTag}</span>
             </span>
         </label>`;
     }).join("");
@@ -3469,7 +3482,7 @@ function updateComboCount() {
 // ★ 依認知類型快速勾選對應分類
 function comboFilterByCog(cog) {
     const topicCogMap = {};
-    allQuestionsData.forEach(q => {
+    getComboQuestionSource().forEach(q => {
         if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
         if (q.cogType) topicCogMap[q.top].add(q.cogType);
     });

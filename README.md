@@ -1,4 +1,4 @@
-# 題庫系統 v1.905 佈建說明
+# 題庫系統 v1.912 佈建說明
 
 ## 文件維護規則
 
@@ -7,6 +7,7 @@
 ```text
 README.md
 DEVELOPMENT_LOG.md
+handoff.md
 前端可見版本號
 GAS / Firebase 同步狀態中的版本號
 ```
@@ -14,14 +15,36 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.905
+版本：v1.912
 日期：2026-06-29
-重點：新增 Google Sheet 初始化工具，可一鍵建立題庫系統所需分頁與欄位。
+重點：修正測驗作答中提前顯示正解，以及綜合練習認知類型只顯示部分章節的問題。
 ```
 
 ## 版本定位
 
-v1.905 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Google 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
+v1.912 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Google 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
+
+## 手機 Google 登入注意事項
+
+v1.910 起，學生端 Google 登入流程調整為：
+
+```text
+優先使用 popup 登入
+→ popup 被瀏覽器阻擋時才改用 redirect
+→ redirect 回跳後等待 Firebase Auth 狀態初始化
+→ 若仍沒有登入狀態，顯示明確錯誤訊息
+```
+
+若手機選完 Google 帳號後又回到登入畫面，請先確認：
+
+```text
+1. Firebase Authentication 的授權網域已加入 albertchang1008-alt.github.io。
+2. 使用 Safari 或 Chrome，不使用 LINE 內建瀏覽器。
+3. iPhone Safari 若仍失敗，可暫時關閉「防止跨網站追蹤」後再登入。
+4. Firebase Console 的 Google Provider 已啟用。
+```
+
+學生端不會因手機登入失敗而改回學號姓名登入；身份仍以 Google 登入與 Firebase session token 為準。
 
 資料分工：
 
@@ -32,6 +55,149 @@ v1.905 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Go
 - 學生名單：可選。可用於老師預先建帳或後台管理，但不是學生首次登入的必要條件。
 
 `Code.full-legacy.gs` 是舊版完整 GAS 備份；正式部署請使用瘦身後的 `Code.gs`。
+
+## 交接檔 handoff.md
+
+自 2026-06-29 起，專案根目錄新增：
+
+```text
+handoff.md
+```
+
+用途：
+
+```text
+記錄目前開發狀態
+記錄最近修改檔案
+記錄已知待處理問題
+記錄下一步建議
+提供下一輪 Codex 或人工接手依據
+```
+
+每次程式或文件修訂後，都必須同步更新 `handoff.md`。
+
+注意：`handoff.md` 不可放入 Firebase private key、API token、密碼或其他敏感資訊。
+
+## 首頁標題設定
+
+學生端首頁標題直接在 Google Sheet 的 `系統設定` 分頁設定：
+
+```text
+systemTitle = 微生物與免疫學題庫系統
+titleColor  = sky
+```
+
+支援的標題顏色可填：
+
+```text
+sky
+pink
+violet
+emerald
+```
+
+也可以填十六進位色碼，例如：
+
+```text
+#0ea5e9
+```
+
+v1.909 起，GAS 會優先讀取 `systemTitle` / `titleColor`。舊版相容欄位 `system_title` / `title_color` 仍可讀取，但不需要手動維護兩份。
+
+## 學生端選題與作答流程
+
+v1.911 起，學生端不再自動展開章節。進入主選單後流程為：
+
+```text
+選科目
+→ 選章節
+→ 選測驗題數（10 / 20 / 30 / 50 / 全部）
+→ 一題一題作答
+→ 可用上一題 / 下一題檢查
+→ 完成後一次送出 Firebase
+```
+
+未點選科目前，章節區只會顯示提示：
+
+```text
+請先點選上方科目
+```
+
+章節清單會顯示：
+
+```text
+章節編號與章節名稱
+已做題數 / 全部題數
+章節完成度
+最高分
+平均每題作答秒數（若已有資料）
+```
+
+抽題原則：
+
+```text
+1. 從 Firebase 題庫讀取該章節題目。
+2. 讀取 studentProgress/{studentId}.attemptedQuestions。
+3. 未作答題優先，已作答題排後。
+4. 兩組內各自隨機洗牌。
+5. 依學生選擇題數切出本次測驗。
+```
+
+答題中不會寫入 Firebase。學生完成全部題目並按送出後，才一次寫入 `answerBatches`，並更新 `studentProgress` 的成績摘要、完成度與 `attemptedQuestions`。
+
+### v1.912 測驗畫面修正
+
+v1.912 已處理下列兩項畫面問題：
+
+```text
+測驗作答中不再立即顯示紅色錯誤與綠色正解。
+學生作答後只會看到「已選」狀態，交卷後才顯示正解與解析。
+底部作答數改成「本次已作答」，避免和目前題號混淆。
+綜合練習分類清單改用完整題庫快取彙整認知類型，不再被上一個章節載入狀態影響。
+若某分類沒有認知類型資料，會顯示「尚未標註認知類型」。
+```
+
+## 後台入口
+
+`admin.html` 是教師後台專用頁，不再共用學生端首頁框架。
+
+後台開啟時只會顯示：
+
+```text
+教師管理後台
+管理人登入
+```
+
+不會再出現學生端的：
+
+```text
+載入中
+系統發生錯誤
+班級完成度排行
+學生登入
+作答或閃卡畫面
+```
+
+後台登入後才會讀取管理資料；學生端題庫載入仍由 `index.html` 負責。
+
+### 後台登入與 Firebase Auth 的分工
+
+後台管理人登入目前使用 Google Sheet 的 `管理人名單` 分頁驗證：
+
+```text
+管理人名單
+使用者ID | 密碼 | 顯示名稱
+```
+
+學生端 Google 登入使用 Firebase Authentication，這是學生身份與防雙視窗用的登入，不是後台管理人登入。
+
+因此 `admin.html` 登入後如果尚未有 Firebase Google Auth 狀態，不應顯示：
+
+```text
+讀取失敗：請先使用 Google 帳號登入
+```
+
+v1.907 起，後台若無 Firebase Google Auth，會改走 GAS 後台通道讀取可用資料，不會阻擋教師後台開啟。
 
 ## 一鍵建立 Google Sheet 範本
 
@@ -60,7 +226,7 @@ README
 5. 執行：
 
 ```text
-createQuestionBankSystemSheetV1905
+createQuestionBankSystemSheetV1907
 ```
 
 6. 第一次執行會要求授權。
@@ -69,14 +235,14 @@ createQuestionBankSystemSheetV1905
 若你已經有一份空白 Google Sheet，也可以在該 Sheet 的 Apps Script 中貼上此檔，執行：
 
 ```text
-setupCurrentSpreadsheetForQuestionBankSystemV1905
+setupCurrentSpreadsheetForQuestionBankSystemV1907
 ```
 
 它會在目前試算表直接建立必要分頁。
 
 ## Firebase 讀寫成本策略
 
-v1.905 先取消班級排行與今日練習人數快取，不再讓學生端或後台首頁為排行榜讀取 `rankingCaches/home`。
+v1.911 先取消班級排行與今日練習人數快取，不再讓學生端或後台首頁為排行榜讀取 `rankingCaches/home`。
 
 保留的學生端 Firebase 讀取：
 
@@ -132,7 +298,7 @@ answerSec
 
 ## 蘇格拉底式解析方案 A
 
-v1.905 支援「舊解析 + 引導式解析」並行。老師在 Google Sheet 題庫中維護舊解析欄位，學生仍能看到完整解析；若題庫同時有方案 A 欄位，學生完成作答或閃卡答題後，會先看到引導式解析，再看到完整解析。
+v1.911 支援「舊解析 + 引導式解析」並行。老師在 Google Sheet 題庫中維護舊解析欄位，學生仍能看到完整解析；若題庫同時有方案 A 欄位，學生完成作答或閃卡答題後，會先看到引導式解析，再看到完整解析。
 
 建議欄位如下。你目前的 `微生物與免疫學近十年國考題062926.xlsx` 已具備這些欄位，不需要再手動新增。
 
@@ -367,7 +533,7 @@ cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 2. 用本資料夾的 `Code.gs` 覆蓋 Apps Script 中的 `Code.gs`。
 3. 確認 Script Properties 已設定 Firebase service account。
 4. 部署新版 Web App。
-5. 將 Web App URL 填回 `firebase-config.js` 的 `GAS_URL`。
+5. 將 Web App URL 填回 `admin.html` 的 `GAS_URL`。
 
 Script Properties 必要值：
 
@@ -431,7 +597,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.905"
+git commit -m "Release v1.912"
 git push
 ```
 
@@ -713,7 +879,7 @@ firebase-v1685.js
 
 1. 將本資料夾的 `Code.gs` 貼到 Apps Script。
 2. 部署新版 Web App。
-3. 確認 `firebase-config.js` 的 `GAS_URL` 指向新版 Web App。
+3. 確認 `admin.html` 的 `GAS_URL` 指向新版 Web App。
 
 Script Properties 仍建議設定：
 

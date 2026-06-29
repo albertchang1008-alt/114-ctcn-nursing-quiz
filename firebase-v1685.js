@@ -127,7 +127,7 @@
       var s = await docPath(c.settings || "system/main").get();
       if (s.exists) settings = s.data() || {};
     } catch (err) {
-      console.warn("[v1.910] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.912] Firebase 設定讀取失敗，略過：", err);
     }
     var activeQuestionBankVersion = settings.questionBankVersion || "";
     var snap = await db.collection(c.questions || "questions").get();
@@ -340,7 +340,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.910"
+      source: "self-register-v1.912"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -387,7 +387,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.910"
+      source: "firebase-v1.912"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -524,7 +524,7 @@
       lastScore: batch.score,
       updatedAt: nowField(),
       updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.910-progress"
+      source: "firebase-v1.912-progress"
     };
   }
 
@@ -589,7 +589,7 @@
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
       clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.910",
+      source: "firebase-v1.912",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
@@ -657,7 +657,7 @@
           clientCreatedAt: new Date().toISOString(),
           lastBatchId: batchId,
           active: true,
-          source: "firebase-v1.910"
+          source: "firebase-v1.912"
         }, { merge: true });
         opCount++;
       }
@@ -705,7 +705,7 @@
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.910] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.912] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }

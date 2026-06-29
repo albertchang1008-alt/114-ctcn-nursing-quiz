@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.910 slim
+// Google Apps Script — 題庫系統 v1.912 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -21,7 +21,7 @@ function doGet(e) {
   return jsonResponse({
     status: "ok",
     service: "quiz-gas-slim",
-    version: "v1.910",
+    version: "v1.912",
     message: "學生端不使用 GAS；請由後台執行同步。"
   });
 }
@@ -480,7 +480,7 @@ function buildFirebasePayloadV19() {
     settings: {
       title: title,
       titleColor: titleColor,
-      version: "v1.910",
+      version: "v1.912",
       authMode: "google",
       topics: topics,
       completionSettings: settings,
@@ -529,7 +529,7 @@ function handleSyncFirebaseV19(payload) {
     if (s.email && s.emailKey) writes.push({ update: { name: firestoreDocName(projectId, "studentsByEmail", s.emailKey), fields: firebaseFields(s) } });
   });
   writes.push({ update: { name: firestoreDocName(projectId, "syncStatus", "main"), fields: firebaseFields({
-    version: "v1.910",
+    version: "v1.912",
     mode: "slim",
     firebaseProjectId: projectId,
     lastQuestionSyncAt: localNow(),
@@ -543,7 +543,7 @@ function handleGetSyncStatusV19() {
   var props = PropertiesService.getScriptProperties();
   return jsonResponse({
     status: "ok",
-    version: "v1.910",
+    version: "v1.912",
     mode: "slim",
     firebaseProjectId: props.getProperty("FIREBASE_PROJECT_ID") || "",
     studentEmailCheck: validateStudentEmailsV19(),
