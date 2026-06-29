@@ -7,6 +7,7 @@
   var auth = null;
   var boot = null;
   var queueKey = "quiz_v169_firebase_queue";
+  var redirectPendingKey = "quiz_v19_google_redirect_pending";
 
   function enabled() {
     var c = cfg.firebaseConfig || {};
@@ -31,6 +32,13 @@
     }
     
     auth = window.firebase.auth(app);
+    try {
+      auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL).catch(function(err) {
+        console.warn("Firebase Auth persistence 設定失敗：", err && err.message ? err.message : err);
+      });
+    } catch (e) {
+      console.warn("Firebase Auth persistence 不支援：", e.message);
+    }
     return true;
   }
 
@@ -89,10 +97,25 @@
     var map = {};
     questions.forEach(function (q) {
       var name = q.top || "未分類";
-      if (!map[name]) map[name] = { name: name, color: q.color || "red", count: 0 };
+      if (!map[name]) map[name] = {
+        name: name,
+        color: q.color || "red",
+        count: 0,
+        subjectId: q.subjectId || "",
+        subjectName: q.subjectName || q.subject || "",
+        chapterId: q.chapterId || "",
+        chapterName: q.chapterName || q.chapter || "",
+        category: q.category || name
+      };
       map[name].count += 1;
     });
-    return Object.keys(map).sort(function (a, b) { return a.localeCompare(b, "zh-TW"); }).map(function (k) { return map[k]; });
+    return Object.keys(map).sort(function (a, b) {
+      var aa = map[a];
+      var bb = map[b];
+      var s = String(aa.subjectName || aa.subjectId || "").localeCompare(String(bb.subjectName || bb.subjectId || ""), "zh-TW", { numeric: true, sensitivity: "base" });
+      if (s !== 0) return s;
+      return String(aa.chapterId || aa.chapterName || aa.name || "").localeCompare(String(bb.chapterId || bb.chapterName || bb.name || ""), "zh-TW", { numeric: true, sensitivity: "base" });
+    }).map(function (k) { return map[k]; });
   }
 
   async function loadBootstrap() {
@@ -104,7 +127,7 @@
       var s = await docPath(c.settings || "system/main").get();
       if (s.exists) settings = s.data() || {};
     } catch (err) {
-      console.warn("[v1.905] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.910] Firebase 設定讀取失敗，略過：", err);
     }
     var activeQuestionBankVersion = settings.questionBankVersion || "";
     var snap = await db.collection(c.questions || "questions").get();
@@ -119,8 +142,8 @@
     boot = {
       status: "success",
       source: "firebase",
-      title: settings.title || "動態題庫測驗",
-      titleColor: settings.titleColor || "sky",
+      title: settings.systemTitle || settings.title || settings.system_title || "動態題庫測驗",
+      titleColor: settings.titleColor || settings.title_color || "sky",
       topics: settings.topics || uniqueTopics(questions),
       questions: questions,
       studentHashes: settings.studentHashes || [],
@@ -167,18 +190,71 @@
     return provider;
   }
 
+  function markRedirectPending() {
+    try { sessionStorage.setItem(redirectPendingKey, String(Date.now())); } catch (err) {}
+  }
+
+  function clearRedirectPending() {
+    try { sessionStorage.removeItem(redirectPendingKey); } catch (err) {}
+  }
+
+  function hasRedirectPending() {
+    try { return !!sessionStorage.getItem(redirectPendingKey); } catch (err) { return false; }
+  }
+
+  function waitForAuthUser(timeoutMs) {
+    if (!auth) return Promise.resolve(null);
+    if (auth.currentUser && !auth.currentUser.isAnonymous) return Promise.resolve(auth.currentUser);
+    return new Promise(function(resolve) {
+      var done = false;
+      var timer = setTimeout(function() {
+        if (done) return;
+        done = true;
+        try { unsub(); } catch (err) {}
+        resolve(auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null);
+      }, timeoutMs || 3000);
+      var unsub = auth.onAuthStateChanged(function(user) {
+        if (done) return;
+        if (user && !user.isAnonymous) {
+          done = true;
+          clearTimeout(timer);
+          try { unsub(); } catch (err) {}
+          resolve(user);
+        }
+      }, function() {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        try { unsub(); } catch (err) {}
+        resolve(null);
+      });
+    });
+  }
+
   async function startGoogleLogin(forceRedirect) {
     if (!init()) throw new Error("Firebase 尚未啟用");
     var provider = googleProvider();
-    if (forceRedirect || isMobileBrowser()) {
+    try {
+      await auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL);
+    } catch (err) {
+      console.warn("Firebase Auth persistence 啟用失敗，仍繼續登入：", err && err.message ? err.message : err);
+    }
+    if (forceRedirect) {
+      markRedirectPending();
       await auth.signInWithRedirect(provider);
       return { status: "redirect" };
     }
     try {
       var popup = await auth.signInWithPopup(provider);
+      clearRedirectPending();
       return { status: "ok", user: popup.user };
     } catch (err) {
-      if (err && (err.code === "auth/popup-blocked" || err.code === "auth/popup-closed-by-user")) {
+      if (err && (
+        err.code === "auth/popup-blocked" ||
+        err.code === "auth/operation-not-supported-in-this-environment" ||
+        err.code === "auth/cancelled-popup-request"
+      )) {
+        markRedirectPending();
         await auth.signInWithRedirect(provider);
         return { status: "redirect" };
       }
@@ -190,12 +266,20 @@
     if (!init()) return null;
     try {
       var result = await auth.getRedirectResult();
-      if (result && result.user) return result.user;
+      if (result && result.user) {
+        clearRedirectPending();
+        return result.user;
+      }
     } catch (err) {
       err.message = "Google 登入回傳失敗：" + err.message;
       throw err;
     }
-    return auth.currentUser && !auth.currentUser.isAnonymous ? auth.currentUser : null;
+    var user = await waitForAuthUser(3500);
+    if (user) {
+      clearRedirectPending();
+      return user;
+    }
+    return null;
   }
 
   async function resolveStudentByGoogleEmail(user) {
@@ -256,7 +340,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.905"
+      source: "self-register-v1.910"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -303,7 +387,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.905"
+      source: "firebase-v1.910"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -440,7 +524,7 @@
       lastScore: batch.score,
       updatedAt: nowField(),
       updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.905-progress"
+      source: "firebase-v1.910-progress"
     };
   }
 
@@ -505,7 +589,7 @@
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
       clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.905",
+      source: "firebase-v1.910",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
@@ -573,7 +657,7 @@
           clientCreatedAt: new Date().toISOString(),
           lastBatchId: batchId,
           active: true,
-          source: "firebase-v1.905"
+          source: "firebase-v1.910"
         }, { merge: true });
         opCount++;
       }
@@ -621,7 +705,7 @@
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.905] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.910] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }
@@ -731,6 +815,8 @@
     ensureSignedIn: ensureSignedIn,
     startGoogleLogin: startGoogleLogin,
     handleGoogleRedirectResult: handleGoogleRedirectResult,
+    hasRedirectPending: hasRedirectPending,
+    clearRedirectPending: clearRedirectPending,
     resolveStudentByGoogleEmail: resolveStudentByGoogleEmail,
     registerStudentProfile: registerStudentProfile,
     createLoginState: createLoginState,
