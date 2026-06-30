@@ -58,7 +58,7 @@
         #admin-modal{display:none;}
         #admin-modal.open{display:flex;}
 
-        /* v1.915 第三種前端風格：夜讀深色 */
+        /* v1.916 第三種前端風格：夜讀深色 */
         :root {
             --night-bg: #05070d;
             --night-panel: #0b1120;
@@ -669,7 +669,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.915 ／ Google 登入 + Firebase-first">v1.915</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.916 ／ Google 登入 + Firebase-first">v1.916</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -2327,8 +2327,8 @@ function renderQuestion() {
         const btn = document.createElement("button");
         btn.className = "option-btn w-full text-left bg-white border border-gray-200 text-gray-700 font-medium rounded-xl p-4";
         btn.textContent = optText;
+        btn.onclick = () => handleOptionClick(btn, idx, q);
         if (selectedAnswered) {
-            btn.disabled = true;
             if (idx === q.userSelectedIndex) {
             btn.className = "option-btn option-picked w-full text-left border-2 border-sky-400 bg-sky-50 text-sky-700 font-bold rounded-xl p-4";
                 btn.textContent = `已選：${optText}`;
@@ -2336,8 +2336,6 @@ function renderQuestion() {
                 btn.className = "option-btn option-muted w-full text-left bg-gray-50 border border-gray-100 text-gray-500 font-medium rounded-xl p-4";
                 btn.textContent = `• ${optText}`;
             }
-        } else {
-            btn.onclick = () => handleOptionClick(btn, idx, q);
         }
         container.appendChild(btn);
     });
@@ -2346,7 +2344,6 @@ function renderQuestion() {
 
 // ── 點選答案（純前端記錄，無網路請求）──
 function handleOptionClick(clickedBtn, selectedIdx, qData) {
-    if (qData.userSelectedIndex !== null && qData.userSelectedIndex !== undefined) return;
     qData.userSelectedIndex = selectedIdx; // ★ 只記錄，不送網路
     qData.userSelectedText = qData.shuffledOpts[selectedIdx] || "";
     // ★ v1.67 計算本題用時
