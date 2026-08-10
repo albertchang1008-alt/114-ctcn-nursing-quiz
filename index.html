@@ -58,7 +58,7 @@
         #admin-modal{display:none;}
         #admin-modal.open{display:flex;}
 
-        /* v1.916 第三種前端風格：夜讀深色 */
+        /* v1.917 第三種前端風格：夜讀深色 */
         :root {
             --night-bg: #05070d;
             --night-panel: #0b1120;
@@ -153,6 +153,33 @@
         body.night-study .bg-sky-100,
         body.night-study .bg-blue-100 {
             background-color: rgba(56,189,248,.12) !important;
+        }
+        /* 解析卡片需獨立覆寫：Tailwind 的 bg-white/70、bg-white/60
+           不會被上方的 .bg-white 規則涵蓋，會造成夜讀模式白字配灰白底。 */
+        body.night-study .socratic-guide-panel {
+            background: rgba(120,53,15,.12) !important;
+            border-color: rgba(251,191,36,.28) !important;
+        }
+        body.night-study .socratic-guide-panel > .font-bold,
+        body.night-study #fc-socratic-wrap > p {
+            color: #fbbf24 !important;
+        }
+        body.night-study .socratic-guide-row {
+            background: rgba(15,23,42,.88) !important;
+            border-color: rgba(251,191,36,.18) !important;
+            box-shadow: inset 3px 0 0 rgba(251,191,36,.42);
+        }
+        body.night-study .socratic-guide-row > .font-bold {
+            color: #fbbf24 !important;
+        }
+        body.night-study .socratic-guide-row > .text-gray-700 {
+            color: #dbe5f1 !important;
+        }
+        body.night-study .complete-analysis-panel {
+            background: rgba(15,23,42,.82) !important;
+            border: 1px solid rgba(56,189,248,.16);
+            color: var(--night-text) !important;
+            box-shadow: none !important;
         }
         body.night-study input,
         body.night-study select,
@@ -564,7 +591,7 @@
                 <p id="fc-answer" class="text-sky-700 font-bold text-lg leading-snug"></p>
             </div>
             <!-- 引導式解析 -->
-            <div id="fc-socratic-wrap" class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3 hidden">
+            <div id="fc-socratic-wrap" class="socratic-guide-panel bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3 hidden">
                 <p class="text-xs text-amber-600 font-semibold mb-2 uppercase tracking-wider">🧭 引導式解析</p>
                 <div id="fc-socratic" class="text-gray-700 text-sm leading-relaxed space-y-2"></div>
             </div>
@@ -669,7 +696,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.916 ／ Google 登入 + Firebase-first">v1.916</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.917 ／ Google 登入 + Firebase-first">v1.917</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1188,7 +1215,7 @@ function renderSocraticGuideHtml(q) {
         q.remedialChapter ? ["建議複習", q.remedialChapter] : null
     ].filter(Boolean);
     const body = rows.map(([label, value]) => `
-        <div class="rounded-lg bg-white/70 border border-amber-100 px-3 py-2">
+        <div class="socratic-guide-row rounded-lg bg-white/70 border border-amber-100 px-3 py-2">
             <div class="text-[11px] font-bold text-amber-700 mb-0.5">${escapeHtml(label)}</div>
             <div class="text-gray-700">${escapeHtml(value)}</div>
         </div>
@@ -2662,11 +2689,11 @@ function renderReviewList() {
             <div class="font-bold text-gray-800 text-lg mb-3"><span class="text-gray-400 text-sm mr-1">Q${idx+1}.</span>${q.q}</div>
             ${optsHtml}
             ${socraticHtml ? `
-            <div class="text-gray-700 text-sm md:text-base leading-relaxed bg-amber-50 border border-amber-200 p-4 rounded-lg shadow-sm mb-3">
+            <div class="socratic-guide-panel text-gray-700 text-sm md:text-base leading-relaxed bg-amber-50 border border-amber-200 p-4 rounded-lg shadow-sm mb-3">
                 <div class="font-bold text-amber-700 mb-2">🧭 引導式解析</div>
                 <div class="space-y-2">${socraticHtml}</div>
             </div>` : ""}
-            <div class="text-gray-700 text-sm md:text-base leading-relaxed bg-white/60 p-4 rounded-lg shadow-sm">
+            <div class="complete-analysis-panel text-gray-700 text-sm md:text-base leading-relaxed bg-white/60 p-4 rounded-lg shadow-sm">
                 <span class="font-bold text-blue-600">💡 完整解析：</span>${q.serverExp}
                 <span class="text-xs text-gray-400 block mt-2 pt-2 border-t border-gray-100">(${q.top})</span>
             </div>`;
