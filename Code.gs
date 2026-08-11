@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.915 slim
+// Google Apps Script — 題庫系統 v1.918 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -21,7 +21,7 @@ function doGet(e) {
   return jsonResponse({
     status: "ok",
     service: "quiz-gas-slim",
-    version: "v1.915",
+    version: "v1.918",
     message: "學生端不使用 GAS；請由後台執行同步。"
   });
 }
@@ -477,6 +477,7 @@ function buildFirebasePayloadV19() {
   var settings = readSettings(ss);
   var questions = readQuestionsForFirebaseV19(ss);
   var topics = buildTopics(questions);
+  var questionBundle = buildQuestionBundleV19(questions);
   var students = readStudentsForFirebaseV19(ss);
   var firstCell = firstRow[0] ? String(firstRow[0]).trim() : "";
   var title = settings.systemTitle || (firstCell && firstCell !== "科目ID" ? firstCell : "動態題庫測驗");
@@ -488,9 +489,10 @@ function buildFirebasePayloadV19() {
     settings: {
       title: title,
       titleColor: titleColor,
-      version: "v1.915",
+      version: "v1.918",
       authMode: "google",
       topics: topics,
+      questionBundlePath: "questionBundles/current",
       completionSettings: settings,
       allClassList: Object.keys(classMap).sort(function(a, b) { return a.localeCompare(b, "zh-TW"); }),
       deadline: settings.deadline || "",
@@ -498,14 +500,103 @@ function buildFirebasePayloadV19() {
       updatedAtText: localNow()
     },
     questions: questions,
+    questionBundle: questionBundle,
     students: students,
     counts: {
       questions: questions.length,
+      questionBundleChunks: questionBundle.chunks.length,
       students: students.length,
       topics: topics.length,
       subjects: uniqueCount(questions.map(function(q) { return q.subject || "未設定科目"; })),
       googleLoginStudents: students.filter(function(s) { return s.email && s.enabled !== false; }).length
     }
+  };
+}
+
+function buildQuestionBundleV19(questions) {
+  var maxQuestionsPerChunk = 50;
+  var maxBytesPerChunk = 700 * 1024;
+  var chunks = [];
+  var current = [];
+  var currentBytes = 2;
+
+  questions.forEach(function(q) {
+    var item = stripQuestionForBundleV19(q);
+    var itemBytes = Utilities.newBlob(JSON.stringify(item)).getBytes().length + 2;
+    if (current.length && (current.length >= maxQuestionsPerChunk || currentBytes + itemBytes > maxBytesPerChunk)) {
+      chunks.push(current);
+      current = [];
+      currentBytes = 2;
+    }
+    current.push(item);
+    currentBytes += itemBytes;
+  });
+  if (current.length) chunks.push(current);
+
+  var chunkDocs = chunks.map(function(items, idx) {
+    var id = String(idx + 1).padStart(3, "0");
+    return {
+      id: id,
+      index: idx + 1,
+      count: items.length,
+      questions: items
+    };
+  });
+  return {
+    manifest: {
+      version: "v1.918",
+      schema: "questionBundle/v1",
+      chunkSize: maxQuestionsPerChunk,
+      chunkCount: chunkDocs.length,
+      questionCount: questions.length,
+      chunkIds: chunkDocs.map(function(c) { return c.id; }),
+      questionBankVersion: questions.length ? questions[0].questionBankVersion : "",
+      updatedAtText: localNow()
+    },
+    chunks: chunkDocs
+  };
+}
+
+function stripQuestionForBundleV19(q) {
+  return {
+    id: q.id || "",
+    firebaseQuestionId: q.firebaseQuestionId || "",
+    originalQuestionId: q.originalQuestionId || "",
+    top: q.top || "",
+    subjectId: q.subjectId || "",
+    subjectName: q.subjectName || q.subject || "",
+    chapterId: q.chapterId || "",
+    chapterName: q.chapterName || q.chapter || "",
+    q: q.q || "",
+    options: q.options || [],
+    ans: q.ans || "",
+    exp: q.exp || "",
+    color: q.color || "",
+    questionType: q.questionType || "",
+    difficulty: q.difficulty || "",
+    importance: q.importance || "",
+    questionStatus: q.questionStatus || "",
+    unit: q.unit || "",
+    chapter: q.chapter || "",
+    category: q.category || "",
+    subCategory: q.subCategory || "",
+    sourcePage: q.sourcePage || "",
+    examSource: q.examSource || "",
+    examYearCode: q.examYearCode || "",
+    imgUrl: q.imgUrl || "",
+    isImage: q.isImage === true,
+    cogType: q.cogType || "",
+    socraticConcept: q.socraticConcept || "",
+    socraticMisconception: q.socraticMisconception || "",
+    socraticHint1: q.socraticHint1 || "",
+    socraticHint2: q.socraticHint2 || "",
+    socraticHint3: q.socraticHint3 || "",
+    remedialChapter: q.remedialChapter || "",
+    remedialUrl: q.remedialUrl || "",
+    lectureTitle: q.lectureTitle || "",
+    lectureUrl: q.lectureUrl || "",
+    source: q.source || "",
+    questionBankVersion: q.questionBankVersion || ""
   };
 }
 
@@ -529,6 +620,10 @@ function handleSyncFirebaseV19(payload) {
   var token = firebaseAccessToken();
   var writes = [];
   writes.push({ update: { name: firestoreDocName(projectId, "system", "main"), fields: firebaseFields(data.settings) } });
+  writes.push({ update: { name: firestoreDocName(projectId, "questionBundles", "current"), fields: firebaseFields(data.questionBundle.manifest) } });
+  data.questionBundle.chunks.forEach(function(chunk) {
+    writes.push({ update: { name: firestoreDocName(projectId, "questionBundles/current/chunks", chunk.id), fields: firebaseFields(chunk) } });
+  });
   data.questions.forEach(function(q) {
     writes.push({ update: { name: firestoreDocName(projectId, "questions", q.firebaseQuestionId), fields: firebaseFields(q) } });
   });
@@ -537,21 +632,21 @@ function handleSyncFirebaseV19(payload) {
     if (s.email && s.emailKey) writes.push({ update: { name: firestoreDocName(projectId, "studentsByEmail", s.emailKey), fields: firebaseFields(s) } });
   });
   writes.push({ update: { name: firestoreDocName(projectId, "syncStatus", "main"), fields: firebaseFields({
-    version: "v1.915",
+    version: "v1.918",
     mode: "slim",
     firebaseProjectId: projectId,
     lastQuestionSyncAt: localNow(),
     counts: data.counts
   }) } });
   firebaseBatchWrite(projectId, token, writes);
-  return jsonResponse({ status: "ok", message: "Firebase 同步完成（slim）", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
+  return jsonResponse({ status: "ok", message: "Firebase 同步完成（slim + question bundle）", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
 }
 
 function handleGetSyncStatusV19() {
   var props = PropertiesService.getScriptProperties();
   return jsonResponse({
     status: "ok",
-    version: "v1.915",
+    version: "v1.918",
     mode: "slim",
     firebaseProjectId: props.getProperty("FIREBASE_PROJECT_ID") || "",
     studentEmailCheck: validateStudentEmailsV19(),

@@ -10,7 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="firebase-v1685.js"></script>
+    <script src="firebase-v1685.js?v=1918"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -696,7 +696,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.917 ／ Google 登入 + Firebase-first">v1.917</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.918 ／ Google 登入 + Firebase-first">v1.918</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1304,6 +1304,9 @@ function googleLoginMessage(err) {
     if (err?.code === "student/id-exists") return "此學號已被註冊，請確認學號或聯絡老師。";
     if (err?.code === "permission-denied") return "註冊失敗：此學號或信箱可能已被註冊，或 Firebase rules 尚未部署新版。";
     if (err?.code === "auth/popup-closed-by-user") return "Google 登入視窗已關閉，請重新登入。";
+    if (err?.code === "auth/popup-blocked") return "Google 登入視窗被瀏覽器封鎖。請允許此網站開啟彈出式視窗後，再按一次「使用 Google 登入」。";
+    if (err?.code === "auth/cancelled-popup-request") return "另一個 Google 登入視窗正在開啟，請關閉後再按一次登入。";
+    if (err?.code === "auth/operation-not-supported-in-this-environment") return "目前的瀏覽器環境不支援 Google 登入視窗。請確認不是無痕模式或 App 內建瀏覽器，再重新開啟本頁。";
     if (err?.code === "session/replaced") return "帳號重複登入，本次作答成績未計入";
     return err?.message || "Google 登入失敗，請重新嘗試";
 }
@@ -1320,7 +1323,7 @@ async function switchGoogleAccount() {
         document.getElementById("google-current-account")?.classList.add("hidden");
         document.getElementById("google-switch-btn")?.classList.add("hidden");
         errEl?.classList.add("hidden");
-        await handleLogin(false);
+        await handleLogin();
     } catch (err) {
         showErr(errEl, googleLoginMessage(err));
     }
@@ -1763,14 +1766,14 @@ async function handleGoogleRedirectLogin() {
             if (!restored) await finishGoogleLogin(user);
         } else if (hadPendingRedirect) {
             window.Firebase1685?.clearRedirectPending?.();
-            showErr(errEl, "Google 登入已返回本頁，但瀏覽器沒有保留登入狀態。請用 Safari/Chrome 開啟、允許跨網站追蹤或改按一次「使用 Google 登入」重新嘗試。");
+            showErr(errEl, "舊版 Google 登入流程沒有保留登入狀態。請直接按一次「使用 Google 登入」；新版會改用登入視窗，不再跳離本頁。");
         }
     } catch (err) {
         showErr(errEl, googleLoginMessage(err));
     }
 }
 
-async function handleLogin(forceRedirect = false) {
+async function handleLogin() {
     const errEl   = document.getElementById("login-error");
     const loginBtn = document.getElementById("login-btn");
     if (!window.Firebase1685?.isEnabled?.()) {
@@ -1785,8 +1788,7 @@ async function handleLogin(forceRedirect = false) {
         errEl.classList.add("hidden");
         loginBtn.disabled = true;
         loginBtn.textContent = "正在開啟 Google 登入...";
-        const result = await window.Firebase1685.startGoogleLogin(forceRedirect);
-        if (result?.status === "redirect") return;
+        const result = await window.Firebase1685.startGoogleLogin();
         if (result?.user) await finishGoogleLogin(result.user);
     } catch (err) {
         showErr(errEl, googleLoginMessage(err));

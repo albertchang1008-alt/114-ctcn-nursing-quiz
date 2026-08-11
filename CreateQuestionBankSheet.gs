@@ -1,4 +1,4 @@
-// 題庫系統 v1.915 - Google Sheet 初始化工具
+// 題庫系統 v1.918 - Google Sheet 初始化工具
 // 使用方式：
 // 1. 到 script.google.com 新增 Apps Script 專案。
 // 2. 貼上本檔內容。
@@ -19,7 +19,7 @@ function createQuestionBankSystemSheetV1905() {
 }
 
 function createQuestionBankSystemSheetV1915() {
-  var title = "題庫系統-v1.915-空白範本";
+  var title = "題庫系統-v1.918-空白範本";
   var ss = SpreadsheetApp.create(title);
 
   setupQuestionBankSystemSheetV1905_(ss);
@@ -274,7 +274,7 @@ function setupReadmeSheet_(sheet) {
   sheet.clear();
   var rows = [
     ["項目", "說明"],
-    ["用途", "這份 Google Sheet 是題庫系統 v1.915 的後台資料入口。"],
+    ["用途", "這份 Google Sheet 是題庫系統 v1.918 的後台資料入口。"],
     ["同步方向", "Google Sheet 題庫 / 設定 / 學生名單 → GAS → Firebase。學生端不直接呼叫 GAS。"],
     ["題庫", "正式題庫請放在「題庫」分頁。每題至少需有問題、選項A-D、解答。每章節可在任一題填寫講義標題與講義連結。"],
     ["科目", "科目ID 建議使用英文或底線，例如 micro_immunology；科目名稱可用中文。"],

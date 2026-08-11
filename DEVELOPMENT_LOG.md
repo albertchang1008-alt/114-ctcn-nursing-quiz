@@ -45,6 +45,63 @@ v1.905
 - v1.912 已將綜合練習的認知類型來源改為完整題庫快取 `allQuestionsForMenu`，不再使用會被目前測驗或閃卡覆蓋的 `allQuestionsData`。
 - 若某分類沒有認知類型資料，前端會明確顯示「尚未標註認知類型」。
 
+## v1.918 - 2026-08-11
+
+### 修訂重點
+
+- 修正部分 iPhone 學生完成 Google 選帳後回到首頁，卻無法還原 Firebase 登入狀態的問題。
+- 根因是 GitHub Pages 與 Firebase `authDomain` 不同站；iOS Safari 與 Chrome 都會限制 redirect 流程所需的第三方儲存。
+- `startGoogleLogin()` 改為在使用者點擊後立即呼叫 `signInWithPopup()`，避免先 `await setPersistence()` 導致 Safari 遺失 user activation。
+- popup 失敗時不再自動降級為 `signInWithRedirect()`，避免形成「選帳號 → 返回首頁 → 仍未登入」循環。
+- 新增 popup 被封鎖、重複 popup 與不支援環境的明確提示。
+- `firebase-v1685.js` 加入 `?v=1918` cachebuster，確保 GitHub Pages 部署後學生取得新版登入程式。
+
+### 驗收重點
+
+- iPhone Safari 與 Chrome 按「使用 Google 登入」後應開啟 Google 登入視窗，完成後留在原頁並進入系統。
+- 登入流程不應再整頁跳轉到 Google 後返回。
+- 若封鎖 popup，頁面應顯示允許彈出式視窗的明確訊息。
+- Firebase Authentication 的授權網域仍需包含 `albertchang1008-alt.github.io`。
+
+## v1.917 - 2026-07-03
+
+### 修訂重點
+
+- 修正學生端每次載入都讀取整個 `questions` collection，導致 Firestore reads 異常偏高的問題。
+- `Code.gs` 同步 Firebase 時新增 `questionBundles/current` manifest。
+- `Code.gs` 會把完整題庫切成 `questionBundles/current/chunks/{chunkId}`，目前以每包最多 50 題、每包約 700KB 以下為原則。
+- `firebase-v1685.js` 的 `loadBootstrap()` 改為優先讀取 `questionBundles/current` 與 chunks。
+- 若 bundle 尚未建立或 Firestore rules 未放行，前端會 fallback 到舊的 `questions` collection，避免學生端無題可用。
+- `firestore.rules` 新增 `questionBundles/{bundleId}` 與其 `chunks` 的讀取規則。
+- `firebase-config.js` 新增 `collections.questionBundle = "questionBundles/current"`。
+- 版本號同步更新為 v1.917。
+
+### 驗收重點
+
+- 後台按「同步到 Firebase」後，Firestore 應出現 `questionBundles/current` 與 `questionBundles/current/chunks/001...N`。
+- 學生端載入後，應從 bundle 取得題庫，不應每次讀取 1000+ 筆 `questions` 文件。
+- Firebase 用量中的讀取數，後續應明顯低於舊版載入行為。
+- 若未更新 rules 或尚未同步 bundle，學生端仍可 fallback，但讀取量會回到舊模式。
+- 既有 `questions` collection 保留，不影響後台、題庫同步、舊資料相容與未來分析。
+
+## v1.916 - 2026-06-30
+
+### 修訂重點
+
+- 修正測驗中學生點選答案後無法修改的問題。
+- `renderQuestion()` 不再於已作答狀態把選項按鈕設為 disabled。
+- `handleOptionClick()` 移除「已選過就 return」的防護，交卷前可重選並覆蓋本題暫存答案。
+- 重選答案會重新計算本題最後作答秒數；Firebase 仍只在交卷時一次寫入。
+- 版本號同步更新為 v1.916。
+
+### 驗收重點
+
+- 同一題第一次點選後，仍可改選其他選項。
+- 改選後畫面只顯示最後選擇。
+- 上一題回看時仍可改選。
+- 交卷後成績與解析依最後選擇判定。
+- 作答中仍不寫入 Firebase。
+
 ## v1.915 - 2026-06-29
 
 ### 修訂重點

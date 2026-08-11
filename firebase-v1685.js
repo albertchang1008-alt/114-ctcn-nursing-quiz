@@ -124,6 +124,50 @@
     }).map(function (k) { return map[k]; });
   }
 
+  async function loadQuestionBundle(settings) {
+    var c = cfg.collections || {};
+    var bundlePath = c.questionBundle || settings.questionBundlePath || "questionBundles/current";
+    var manifestSnap = await docPath(bundlePath).get();
+    if (!manifestSnap.exists) return null;
+
+    var manifest = manifestSnap.data() || {};
+    var chunkIds = Array.isArray(manifest.chunkIds) ? manifest.chunkIds : [];
+    if (!chunkIds.length) return null;
+
+    var chunkSnaps = await Promise.all(chunkIds.map(function(id) {
+      return docPath(bundlePath + "/chunks/" + id).get();
+    }));
+
+    var questions = [];
+    chunkSnaps.forEach(function(snap) {
+      if (!snap.exists) return;
+      var data = snap.data() || {};
+      (Array.isArray(data.questions) ? data.questions : []).forEach(function(item) {
+        var q = normalizeQuestion(item);
+        if (q.id && q.q) questions.push(q);
+      });
+    });
+
+    if (!questions.length) return null;
+    return {
+      manifest: manifest,
+      questions: questions
+    };
+  }
+
+  async function loadQuestionsFallback(settings) {
+    var c = cfg.collections || {};
+    var activeQuestionBankVersion = settings.questionBankVersion || "";
+    var snap = await db.collection(c.questions || "questions").get();
+    var questions = [];
+    snap.forEach(function (doc) {
+      var q = normalizeQuestion(doc);
+      if (activeQuestionBankVersion && q.questionBankVersion !== activeQuestionBankVersion) return;
+      if (q.id && q.q) questions.push(q);
+    });
+    return questions;
+  }
+
   async function loadBootstrap() {
     if (!init()) return null;
     if (boot) return boot;
@@ -133,31 +177,31 @@
       var s = await docPath(c.settings || "system/main").get();
       if (s.exists) settings = s.data() || {};
     } catch (err) {
-      console.warn("[v1.915] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.918] Firebase 設定讀取失敗，略過：", err);
     }
-    var activeQuestionBankVersion = settings.questionBankVersion || "";
-    var snap = await db.collection(c.questions || "questions").get();
-    var questions = [];
-    snap.forEach(function (doc) {
-      var q = normalizeQuestion(doc);
-      if (activeQuestionBankVersion && q.questionBankVersion !== activeQuestionBankVersion) return;
-      if (q.id && q.q) questions.push(q);
-    });
+    var bundle = null;
+    try {
+      bundle = await loadQuestionBundle(settings);
+    } catch (err) {
+      console.warn("[v1.918] 題庫 bundle 讀取失敗，改用舊 questions 集合：", err);
+    }
+    var questions = bundle ? bundle.questions : await loadQuestionsFallback(settings);
     if (!questions.length) return null;
 
     boot = {
       status: "success",
-      source: "firebase",
+      source: bundle ? "firebase-bundle" : "firebase",
       title: settings.systemTitle || settings.title || settings.system_title || "動態題庫測驗",
       titleColor: settings.titleColor || settings.title_color || "sky",
       topics: settings.topics || uniqueTopics(questions),
       questions: questions,
+      questionBundle: bundle ? bundle.manifest : null,
       studentHashes: settings.studentHashes || [],
       completionSettings: settings.completionSettings || settings,
       allClassList: settings.allClassList || [],
       deadline: settings.deadline || "",
       rankingCache: null,
-      questionBankVersion: settings.questionBankVersion || ""
+      questionBankVersion: settings.questionBankVersion || (bundle && bundle.manifest ? bundle.manifest.questionBankVersion : "")
     };
     return boot;
   }
@@ -194,10 +238,6 @@
     var provider = new window.firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     return provider;
-  }
-
-  function markRedirectPending() {
-    try { sessionStorage.setItem(redirectPendingKey, String(Date.now())); } catch (err) {}
   }
 
   function clearRedirectPending() {
@@ -237,33 +277,22 @@
     });
   }
 
-  async function startGoogleLogin(forceRedirect) {
+  async function startGoogleLogin() {
     if (!init()) throw new Error("Firebase 尚未啟用");
     var provider = googleProvider();
+
+    // GitHub Pages 與 firebaseapp.com 是不同來源。iOS Safari/Chrome 會封鎖
+    // redirect 登入所需的第三方儲存，因此正式登入只使用 popup。
+    // 這裡也不能在 signInWithPopup 前 await：Safari 可能因此失去使用者點擊
+    // 的 activation，接著把 popup 判定為非使用者觸發而封鎖。
     try {
-      await auth.setPersistence(window.firebase.auth.Auth.Persistence.LOCAL);
-    } catch (err) {
-      console.warn("Firebase Auth persistence 啟用失敗，仍繼續登入：", err && err.message ? err.message : err);
-    }
-    if (forceRedirect) {
-      markRedirectPending();
-      await auth.signInWithRedirect(provider);
-      return { status: "redirect" };
-    }
-    try {
-      var popup = await auth.signInWithPopup(provider);
+      var popupPromise = auth.signInWithPopup(provider);
+      var popup = await popupPromise;
       clearRedirectPending();
       return { status: "ok", user: popup.user };
     } catch (err) {
-      if (err && (
-        err.code === "auth/popup-blocked" ||
-        err.code === "auth/operation-not-supported-in-this-environment" ||
-        err.code === "auth/cancelled-popup-request"
-      )) {
-        markRedirectPending();
-        await auth.signInWithRedirect(provider);
-        return { status: "redirect" };
-      }
+      // 不再自動 fallback 到 signInWithRedirect；在跨站儲存受限的瀏覽器
+      // 中，redirect 只會回到登入頁卻無法還原 Firebase 使用者。
       throw err;
     }
   }
@@ -346,7 +375,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.915"
+      source: "self-register-v1.918"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -393,7 +422,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.915"
+      source: "firebase-v1.918"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -530,7 +559,7 @@
       lastScore: batch.score,
       updatedAt: nowField(),
       updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.915-progress"
+      source: "firebase-v1.918-progress"
     };
   }
 
@@ -595,7 +624,7 @@
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
       clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.915",
+      source: "firebase-v1.918",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
@@ -667,7 +696,7 @@
           clientCreatedAt: new Date().toISOString(),
           lastBatchId: batchId,
           active: true,
-          source: "firebase-v1.915"
+          source: "firebase-v1.918"
         }, { merge: true });
         opCount++;
       }
@@ -715,7 +744,7 @@
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.915] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.918] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }

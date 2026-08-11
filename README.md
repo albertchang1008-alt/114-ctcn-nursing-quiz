@@ -1,4 +1,4 @@
-# 題庫系統 v1.915 佈建說明
+# 題庫系統 v1.918 佈建說明
 
 ## 文件維護規則
 
@@ -15,32 +15,32 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.915
-日期：2026-06-29
-重點：加入第三種夜讀深色前端、右上角風格切換，以及章節講義連結。
+版本：v1.918
+日期：2026-08-11
+重點：修正 iPhone 上 Google popup 被延遲呼叫後改走 redirect，導致登入狀態無法還原的問題。
 ```
 
 ## 版本定位
 
-v1.915 以 v1.9 架構為基礎，學生端改為 Firebase Authentication 的 Google 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
+v1.918 以 v1.9 架構為基礎，學生端使用 Firebase Authentication 的 Google popup 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
 
 ## 手機 Google 登入注意事項
 
-v1.910 起，學生端 Google 登入流程調整為：
+v1.918 起，學生端 Google 登入流程調整為：
 
 ```text
-優先使用 popup 登入
-→ popup 被瀏覽器阻擋時才改用 redirect
-→ redirect 回跳後等待 Firebase Auth 狀態初始化
-→ 若仍沒有登入狀態，顯示明確錯誤訊息
+使用者按下按鈕後立即呼叫 popup 登入
+→ 不在 popup 前等待非必要的非同步操作
+→ popup 失敗時顯示具體原因
+→ 不再自動降級到跨站 redirect
 ```
 
 若手機選完 Google 帳號後又回到登入畫面，請先確認：
 
 ```text
 1. Firebase Authentication 的授權網域已加入 albertchang1008-alt.github.io。
-2. 使用 Safari 或 Chrome，不使用 LINE 內建瀏覽器。
-3. iPhone Safari 若仍失敗，可暫時關閉「防止跨網站追蹤」後再登入。
+2. 使用 Safari 或 Chrome，不使用 LINE、Facebook 等 App 內建瀏覽器或無痕模式。
+3. 確認瀏覽器允許此網站開啟 Google 登入視窗。
 4. Firebase Console 的 Google Provider 已啟用。
 ```
 
@@ -144,6 +144,70 @@ v1.911 起，學生端不再自動展開章節。進入主選單後流程為：
 ```
 
 答題中不會寫入 Firebase。學生完成全部題目並按送出後，才一次寫入 `answerBatches`，並更新 `studentProgress` 的成績摘要、完成度與 `attemptedQuestions`。
+
+### v1.917 題庫 bundle 快取
+
+v1.917 新增 `questionBundles/current` 題庫快取包，目標是降低學生端載入時的 Firestore 讀取量。
+
+舊流程：
+
+```text
+學生開啟 index.html
+→ 讀 system/main
+→ 讀 questions collection 全部文件
+→ 約每次載入讀取 1000+ 題目文件
+```
+
+新流程：
+
+```text
+學生開啟 index.html
+→ 讀 system/main
+→ 讀 questionBundles/current manifest
+→ 讀 questionBundles/current/chunks/001...N
+→ 取得完整題庫快取
+```
+
+以目前約 1062 題估算，bundle 每 50 題一包，學生端約讀：
+
+```text
+1 筆 system/main
+1 筆 questionBundles/current
+約 22 筆 chunks
+合計約 24 reads
+```
+
+原本約 1062 reads / 次載入，改成約 24 reads / 次載入，約可降低 40 倍以上讀取量。
+
+注意：
+
+```text
+1. 必須更新 Code.gs 並按後台「同步到 Firebase」，Firestore 才會建立 questionBundles/current。
+2. 必須更新 Firestore rules，允許學生端讀取 questionBundles/current 與 chunks。
+3. 若 bundle 尚未建立或 rules 未放行，前端會 fallback 回舊 questions collection，讀取量仍會偏高。
+4. questions collection 仍保留，供後台、單題查核、未來分析與相容流程使用。
+```
+
+同步完成後，請到 Firebase Console 確認存在：
+
+```text
+questionBundles/current
+questionBundles/current/chunks/001
+questionBundles/current/chunks/002
+...
+```
+
+### v1.916 測驗答案修改修正
+
+v1.916 已修正測驗中「點選答案後無法修改」的問題：
+
+```text
+送出答案前，學生可以重新點選同一題的其他選項。
+重新點選會覆蓋本題暫存答案。
+重新點選後會重新計算該題最後作答秒數。
+交卷前仍不寫入 Firebase。
+交卷後才依最後選擇統一判分與送出。
+```
 
 ### v1.913 測驗畫面修正
 
@@ -628,7 +692,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.915"
+git commit -m "Release v1.918"
 git push
 ```
 
