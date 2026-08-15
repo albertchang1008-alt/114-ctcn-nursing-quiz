@@ -1,4 +1,4 @@
-# 題庫系統 v1.918 佈建說明
+# 題庫系統 v1.922 佈建說明
 
 ## 文件維護規則
 
@@ -15,14 +15,33 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.918
-日期：2026-08-11
-重點：修正 iPhone 上 Google popup 被延遲呼叫後改走 redirect，導致登入狀態無法還原的問題。
+版本：v1.922
+日期：2026-08-15
+重點：登入優先、章節題庫差異同步、錯題 V2 與成績增量回寫。
 ```
+
+## v1.919～v1.922 改造摘要
+
+- 未登入時只讀 `publicConfig/main`，不再下載題庫；`system/main` 與題庫均要求 Firebase Authentication。
+- 題庫以 SHA-256 內容雜湊判斷變更，GAS 加入 `LockService`，相同題庫與學生名單會跳過大量寫入。
+- 新題庫使用 `questionBanks/{bankHash}` manifest 與 `questionChapterBundles/{chapterHash}`；學生選章節後才載入該章 chunks。
+- 正式環境 `allowLegacyQuestionFallback=false`，章節 bundle 失敗不再靜默讀取完整 `questions` collection。
+- 錯題 V2 雙寫至 `students/{studentId}/wrongQuestions`，每次有錯題的測驗另存一筆 `wrongReviewEvents/{batchId}`，支援「尚未答對」與「曾經答錯」時間回看。
+- Firebase 成績回 Sheet 改以 `LAST_SCORE_CURSOR_ISO` 增量查詢，保留 5 秒重疊並以 Batch ID 去重。
+- 舊 `questions`、頂層 `wrongQuestions` 與 `studentProgress.activeWrongQuestions` 暫時保留；需完成正式環境驗收後才清理。
+
+### v1.922 首次部署順序
+
+1. 發布 `firestore.rules`。
+2. 更新並部署 `Code.gs`。
+3. 後台按「同步到 Firebase」，建立 `publicConfig/main`、`questionBanks` 與 `questionChapterBundles`。
+4. 部署 `firebase-config.js`、`firebase-v1685.js`、`index.html`、`admin.html`。
+5. 後台按一次「搬移錯題 V2」；此動作不刪除舊資料。
+6. 驗證登入、單章、綜合測驗、錯題兩種模式及成績增量回寫。
 
 ## 版本定位
 
-v1.918 以 v1.9 架構為基礎，學生端使用 Firebase Authentication 的 Google popup 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊，系統確認 Google 信箱已驗證後，才建立學生資料並進入系統。
+v1.922 以 v1.9 架構為基礎，學生端使用 Firebase Authentication 的 Google popup 登入。沒有預先建立學生名單時，學生第一次 Google 登入後會先註冊；預建名單第一次登入時會安全綁定 Firebase UID。題庫在登入後按章節載入。
 
 ## 手機 Google 登入注意事項
 
@@ -692,7 +711,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.918"
+git commit -m "Release v1.922"
 git push
 ```
 

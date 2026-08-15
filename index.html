@@ -10,7 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="firebase-v1685.js?v=1918"></script>
+    <script src="firebase-v1685.js?v=1922"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -696,7 +696,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.918 ／ Google 登入 + Firebase-first">v1.918</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.922 ／ 登入優先 + 章節題庫 + 錯題 V2">v1.922</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -752,7 +752,16 @@
         </div>
 
         <!-- 時間範圍 + 題數上限 -->
-        <div class="grid grid-cols-2 gap-3 mb-4 shrink-0">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 shrink-0">
+            <div>
+                <label class="text-xs font-semibold text-gray-500 mb-1 block">錯題類型</label>
+                <select id="wfc-mode-select"
+                    class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white"
+                    onchange="loadWrongFcCount()">
+                    <option value="active" selected>尚未答對</option>
+                    <option value="history">曾經答錯</option>
+                </select>
+            </div>
             <div>
                 <label class="text-xs font-semibold text-gray-500 mb-1 block">時間範圍</label>
                 <select id="wfc-hours-select"
@@ -1400,6 +1409,15 @@ function applyStudentLoginState(student, user, token) {
 }
 
 async function enterMainMenuAfterLogin() {
+    const result = await window.Firebase1685.loadBootstrap();
+    if (!result || result.status !== "success" || !result.topics?.length) {
+        throw new Error("登入成功，但章節題庫尚未完成同步");
+    }
+    topicsData = result.topics || [];
+    allQuestionsForMenu = [];
+    completionSettings = result.completionSettings || completionSettings;
+    allClassList = result.allClassList || [];
+    if (result.deadline) initDeadline(result.deadline);
     isLoggedIn = true;
     document.getElementById("display-user-name").textContent = studentName;
     hide("login-section");
@@ -1421,6 +1439,8 @@ async function enterMainMenuAfterLogin() {
 
 async function tryRestoreLocalSession(user) {
     if (!user || !window.Firebase1685?.isEnabled?.()) return false;
+    const authConfig = await window.Firebase1685.loadAuthenticatedSettings();
+    completionSettings = authConfig.completionSettings || authConfig || completionSettings;
     const allowed = isEmailAllowed(user.email || "");
     if (!allowed.ok) {
         clearLocalSession();
@@ -1603,14 +1623,12 @@ async function fetchQuestionBank() {
         let result = null;
         if (window.Firebase1685?.isEnabled?.()) {
             try {
-                result = await window.Firebase1685.loadBootstrap();
+                result = await window.Firebase1685.loadPublicConfig();
             } catch (fbErr) {
                 console.warn("[v1.69] Firebase 題庫載入失敗：", fbErr);
             }
         }
-        if (!result) throw new Error("Firebase 題庫尚未啟用或尚未同步資料");
-        if (result.status !== "success" || !result.topics?.length)
-            throw new Error("題庫回傳格式不正確，或題庫為空");
+        if (!result) throw new Error("Firebase 公開設定尚未建立，請由後台同步一次");
 
         document.getElementById("main-title").textContent = result.title || "動態題庫測驗";
         document.title = result.title || "動態題庫測驗";
@@ -1640,15 +1658,15 @@ async function fetchQuestionBank() {
         }
 
         // ★ 儲存雜湊名單供登入時本地比對（原始學號姓名不在前端）
-        studentHashes = result.studentHashes || [];
+        studentHashes = [];
 
         // ★ 只儲存分類清單，題目內容待進入分類後再載入
-        topicsData = result.topics || [];
-        allQuestionsForMenu = result.questions || [];
+        topicsData = [];
+        allQuestionsForMenu = [];
 
         // ★ 儲存完成度設定供學生端個人完成度使用
-        completionSettings = result.completionSettings || { passScore: 80, completionTopics: [], completionClasses: [] };
-        allClassList       = result.allClassList || [];
+        completionSettings = result.completionSettings || result || { passScore: 80, completionTopics: [], completionClasses: [] };
+        allClassList       = [];
 
         // ★ v1.3 初始化倒數計時器
         if (result.deadline) initDeadline(result.deadline);
@@ -1673,6 +1691,8 @@ async function finishGoogleLogin(user) {
 
     currentGoogleUser = user;
     showGoogleAccount(user);
+    const authConfig = await window.Firebase1685.loadAuthenticatedSettings();
+    completionSettings = authConfig.completionSettings || authConfig || completionSettings;
     const allowed = isEmailAllowed(user?.email || "");
     if (!allowed.ok) {
         const err = new Error(allowed.message);
@@ -2175,14 +2195,11 @@ async function loadTopicQuestions(topic, flashcard, requestedCount = null) {
     let data = null;
     if (window.Firebase1685?.isEnabled?.()) {
         try {
-            const boot = await window.Firebase1685.loadBootstrap();
-            if (boot?.questions?.length) {
-                data = topic === "綜合練習"
-                    ? boot.questions
-                    : boot.questions.filter(q => (q.top || "未分類") === topic);
-            }
+            data = topic === "綜合練習"
+                ? await window.Firebase1685.loadTopicsQuestions(topicsData.map(t => t.name))
+                : await window.Firebase1685.loadChapterQuestions(topic);
         } catch (err) {
-            console.warn("[v1.69] Firebase 題目讀取失敗：", err);
+            console.warn("[v1.922] Firebase 章節題目讀取失敗：", err);
             throw err;
         }
     }
@@ -3507,6 +3524,7 @@ function wfcSelectAll(val) {
 
 async function loadWrongFcCount() {
     const val     = document.getElementById("wfc-hours-select").value;
+    const wrongMode = document.getElementById("wfc-mode-select")?.value || "active";
     const hours   = val === "0" ? 0 : parseInt(val);
     const topics  = [...document.querySelectorAll(".wfc-topic-cb:checked")].map(cb => cb.value);
     const countEl = document.getElementById("wfc-count-text");
@@ -3526,7 +3544,7 @@ async function loadWrongFcCount() {
     try {
         // 先補上本次測驗剛產生的錯題，再查 Firebase 歷史錯題。
         const currentWrong = getCurrentSessionWrongFlashcards("").filter(q => topics.includes(q.top || "未分類"));
-        const firebaseWrong = await fetchWrongQuestionsFromFirebase({ topics, hours });
+        const firebaseWrong = await fetchWrongQuestionsFromFirebase({ topics, hours, mode: wrongMode });
 
         // 合併去重（以 id 為 key）
         const qMap = new Map();
@@ -3631,9 +3649,9 @@ function getCurrentSessionWrongFlashcards(topic) {
         }, idx));
 }
 
-async function fetchWrongQuestionsFromFirebase({ topic = "", topics = null, hours = 0 } = {}) {
+async function fetchWrongQuestionsFromFirebase({ topic = "", topics = null, hours = 0, mode = "active" } = {}) {
     if (!window.Firebase1685?.loadWrongQuestions) throw new Error("Firebase 錯題功能尚未啟用");
-    const list = await window.Firebase1685.loadWrongQuestions(studentId, { topic, topics, hours });
+    const list = await window.Firebase1685.loadWrongQuestions(studentId, { topic, topics, hours, mode });
     return (list || []).map((q, idx) => normalizePracticeQuestion(q, idx));
 }
 
@@ -3751,11 +3769,12 @@ function openComboModal() {
     // 從完整題庫快取收集每個分類對應的認知類型，避免被單一章節載入狀態污染。
     const questionSource = getComboQuestionSource();
     const topicCogMap = {}; // topic → Set of cogTypes
+    topicsData.forEach(t => { topicCogMap[t.name] = new Set(t.cogTypes || []); });
     questionSource.forEach(q => {
         if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
         if (q.cogType) topicCogMap[q.top].add(q.cogType);
     });
-    const allCogTypes = [...new Set(questionSource.map(q => q.cogType).filter(Boolean))].sort();
+    const allCogTypes = [...new Set(topicsData.flatMap(t => t.cogTypes || []).concat(questionSource.map(q => q.cogType).filter(Boolean)))].sort();
 
     const cogFilterEl = document.getElementById("combo-cog-filter");
     cogFilterEl.innerHTML = allCogTypes.length === 0 ? "" : `
@@ -3820,6 +3839,7 @@ function updateComboCount() {
 // ★ 依認知類型快速勾選對應分類
 function comboFilterByCog(cog) {
     const topicCogMap = {};
+    topicsData.forEach(t => { topicCogMap[t.name] = new Set(t.cogTypes || []); });
     getComboQuestionSource().forEach(q => {
         if (!topicCogMap[q.top]) topicCogMap[q.top] = new Set();
         if (q.cogType) topicCogMap[q.top].add(q.cogType);
@@ -3863,12 +3883,12 @@ async function startComboQuiz() {
 
     try {
         if (!window.Firebase1685?.isEnabled?.()) throw new Error("Firebase 題庫尚未啟用");
-        const boot = await window.Firebase1685.loadBootstrap();
-        if (!boot?.questions?.length) throw new Error("Firebase 題庫尚未同步資料");
+        const loaded = await window.Firebase1685.loadTopicsQuestions(selectedTopics);
+        if (!loaded?.length) throw new Error("勾選章節的 Firebase 題庫尚未同步資料");
 
         // 篩選勾選的分類，再洗牌取指定題數
         const topicSet = new Set(selectedTopics);
-        const filtered = (boot.questions || []).filter(q => topicSet.has(q.top));
+        const filtered = loaded.filter(q => topicSet.has(q.top));
         const picked   = shuffle([...filtered]).slice(0, count);
 
         if (!picked.length) {

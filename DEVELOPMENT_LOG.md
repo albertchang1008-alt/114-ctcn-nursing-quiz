@@ -433,3 +433,19 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - GAS 每次計算排行與今日人數太耗資源。
 - 重複登入與 session 檢查若過度輪詢會增加 GAS 負擔。
 - 閃卡答案顯示、選項顏色與題庫答案一致性需要更嚴格處理。
+# v1.922 - 2026-08-15
+
+### 改造內容
+
+- v1.919：開頁改讀公開設定，Google 登入後才讀 `system/main` 與題庫；題庫 rules 改為需登入。
+- v1.920：GAS 加入 SHA-256、`LockService`、題庫與學生名單差異同步；題庫改為內容定址章節 bundles，未變更章節可重用。
+- v1.921：新增學生錯題狀態子集合、每次測驗錯題事件、尚未答對／曾經答錯模式與非破壞性搬移工具。
+- v1.922：成績回寫改依 `clientCreatedAt` cursor 增量查詢，採 5 秒重疊及 Batch ID 去重。
+- 正式環境停用全題 fallback；舊集合暫時保留，待部署後觀察 7～14 天再清理。
+
+### 本機驗收
+
+- `Code.gs`、Firebase JS 與兩份 HTML inline script 均通過 JavaScript 語法檢查。
+- 內容雜湊重複計算一致；模擬三題兩章成功產生兩份章節 manifest/chunks。
+- 已確認登入前程式只呼叫 `loadPublicConfig()`，登入後 `loadBootstrap()` 才能讀系統與章節 metadata。
+- 正式環境實際 Firestore reads/writes、rules、OAuth、GAS REST 與手機登入仍需部署驗收。

@@ -1,0 +1,230 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsNewDoc() {
+      return signedIn()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.studentId is string
+        && request.resource.data.studentId.size() > 0;
+    }
+
+    function ownsExistingDoc() {
+      return signedIn()
+        && resource.data.uid is string
+        && resource.data.uid == request.auth.uid;
+    }
+
+    function ownsExistingEmailDoc() {
+      return signedIn()
+        && resource.data.email is string
+        && request.auth.token.email is string
+        && resource.data.email == request.auth.token.email;
+    }
+
+    function ownsRegisteredStudent(studentId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/students/$(studentId))
+        && get(/databases/$(database)/documents/students/$(studentId)).data.uid is string
+        && get(/databases/$(database)/documents/students/$(studentId)).data.uid == request.auth.uid;
+    }
+
+    function verifiedGoogleEmail() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function selfRegisterStudent(studentId) {
+      return verifiedGoogleEmail()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.studentId is string
+        && request.resource.data.studentId == studentId
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.className is string
+        && request.resource.data.className.size() > 0
+        && request.resource.data.campus is string
+        && request.resource.data.campus.size() > 0
+        && request.resource.data.enabled == true
+        && request.resource.data.authProvider == "google";
+    }
+
+    function canClaimStudent(studentId) {
+      return verifiedGoogleEmail()
+        && resource.data.studentId == studentId
+        && resource.data.email == request.auth.token.email
+        && (!('uid' in resource.data) || resource.data.uid == "")
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.studentId == resource.data.studentId
+        && request.resource.data.email == resource.data.email;
+    }
+
+    match /system/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /publicConfig/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /questions/{questionId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /questionBundles/{bundleId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /chunks/{chunkId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+    }
+
+    match /questionBanks/{bankId} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /chapters/{chapterId} {
+        allow read: if signedIn();
+        allow write: if false;
+
+        match /chunks/{chunkId} {
+          allow read: if signedIn();
+          allow write: if false;
+        }
+      }
+    }
+
+    match /questionChapterBundles/{chapterHash} {
+      allow read: if signedIn();
+      allow write: if false;
+
+      match /chunks/{chunkId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+    }
+
+    match /rankingCaches/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /students/{studentId} {
+      allow read: if ownsExistingDoc() || ownsExistingEmailDoc();
+      allow create: if selfRegisterStudent(studentId);
+      allow update: if canClaimStudent(studentId);
+      allow delete: if false;
+
+      match /wrongQuestions/{questionId} {
+        allow read: if ownsRegisteredStudent(studentId);
+        allow create, update: if ownsRegisteredStudent(studentId)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.studentId == studentId;
+        allow delete: if false;
+      }
+
+      match /wrongReviewEvents/{eventId} {
+        allow read: if ownsRegisteredStudent(studentId);
+        allow create, update: if ownsRegisteredStudent(studentId)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.studentId == studentId;
+        allow delete: if false;
+      }
+    }
+
+    match /studentsByEmail/{emailKey} {
+      allow get: if signedIn()
+        && (
+          !exists(/databases/$(database)/documents/studentsByEmail/$(emailKey))
+          || ownsExistingEmailDoc()
+        );
+      allow list: if false;
+      allow create: if verifiedGoogleEmail()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email is string
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.emailKey is string
+        && request.resource.data.emailKey == emailKey
+        && request.resource.data.studentId is string
+        && request.resource.data.studentId.size() > 0
+        && request.resource.data.enabled == true
+        && request.resource.data.authProvider == "google";
+      allow update: if verifiedGoogleEmail()
+        && resource.data.email == request.auth.token.email
+        && (!('uid' in resource.data) || resource.data.uid == "")
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.emailKey == emailKey;
+      allow delete: if false;
+    }
+
+    match /answerBatches/{batchId} {
+      allow create: if ownsNewDoc() && ownsRegisteredStudent(request.resource.data.studentId);
+      allow update: if ownsNewDoc() && ownsExistingDoc() && ownsRegisteredStudent(request.resource.data.studentId);
+      allow read, delete: if false;
+    }
+
+    match /answerDetails/{detailId} {
+      allow create: if ownsNewDoc() && ownsRegisteredStudent(request.resource.data.studentId);
+      allow update: if ownsNewDoc() && ownsExistingDoc() && ownsRegisteredStudent(request.resource.data.studentId);
+      allow read, delete: if false;
+    }
+
+    match /studentProgress/{studentId} {
+      allow read: if ownsRegisteredStudent(studentId) || ownsExistingDoc() || ownsExistingEmailDoc();
+      allow create, update: if ownsNewDoc()
+        && request.resource.data.studentId == studentId
+        && ownsRegisteredStudent(studentId);
+      allow delete: if false;
+    }
+
+    match /wrongQuestions/{wrongId} {
+      allow read: if ownsExistingDoc();
+      allow create, update: if ownsNewDoc() && ownsRegisteredStudent(request.resource.data.studentId);
+      allow delete: if false;
+    }
+
+    match /studentAttempts/{studentId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /loginStates/{studentId} {
+      allow read: if signedIn()
+        && resource.data.uid is string
+        && resource.data.uid == request.auth.uid;
+      allow create, update: if signedIn()
+        && request.resource.data.uid is string
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.studentId == studentId
+        && ownsRegisteredStudent(studentId)
+        && request.resource.data.token is string
+        && request.resource.data.token.size() > 0;
+      allow delete: if false;
+    }
+
+    match /offlineQueue/{queueId} {
+      allow create: if ownsNewDoc();
+      allow read, update, delete: if false;
+    }
+
+    match /syncStatus/{docId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+  }
+}

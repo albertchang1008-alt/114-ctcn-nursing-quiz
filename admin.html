@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.918</p>
+                <p class="font-bold text-gray-800">v1.922</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.918 ／ Google 登入 + Firebase">v1.918</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.922 ／ 差異同步 + 錯題 V2">v1.922</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -828,6 +828,10 @@
                         class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold px-8 py-3 rounded-xl transition">
                         🔐 檢查 Google 登入名單
                     </button>
+                    <button id="wrong-v2-migrate-btn" onclick="migrateWrongQuestionsV2()"
+                        class="bg-rose-500 hover:bg-rose-600 text-white font-bold px-8 py-3 rounded-xl transition">
+                        🧭 搬移錯題 V2
+                    </button>
                 </div>
                 <p id="settings-save-status" class="text-sm mt-3 font-medium hidden"></p>
             </div>
@@ -1041,7 +1045,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.918";
+    document.title = "教師後台 - 題庫系統 v1.922";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
@@ -3459,7 +3463,9 @@ async function syncFirebaseV1685() {
         }
         if (res.status !== "ok") throw new Error(res.message || "同步失敗");
         const c = res.counts || {};
-        status.textContent = `✓ Firebase 同步完成：題目 ${c.questions || 0} 筆、學生 ${c.students || 0} 筆、可 Google 登入 ${c.googleLoginStudents || 0} 位、分類 ${c.topics || 0} 個。`;
+        const bankNote = res.questionBankChanged ? "題庫有變更" : "題庫未變更，已跳過";
+        const studentNote = res.studentsChanged ? "名單有變更" : "名單未變更，已跳過";
+        status.textContent = `✓ Firebase 同步完成：${bankNote}、${studentNote}；實際寫入 ${res.written || 0} 筆。題目 ${c.questions || 0} 筆、學生 ${c.students || 0} 位。`;
         status.className = "text-sm mt-3 font-medium text-green-600";
         status.classList.remove("hidden");
     } catch(e) {
@@ -3471,6 +3477,29 @@ async function syncFirebaseV1685() {
             btn.disabled = false;
             btn.textContent = oldText || "🔥 同步到 Firebase";
         }
+    }
+}
+
+async function migrateWrongQuestionsV2() {
+    const btn = document.getElementById("wrong-v2-migrate-btn");
+    const status = document.getElementById("settings-save-status");
+    if (!confirm("要將現有尚未答對的錯題搬移到 V2 嗎？此操作不會刪除舊資料。")) return;
+    const oldText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "搬移中...";
+    try {
+        const res = await postGAS({ action: "migrateWrongQuestionsV2" });
+        if (res.status !== "ok") throw new Error(res.message || "搬移失敗");
+        status.textContent = `✓ 錯題 V2 搬移完成：${res.migrated || 0} 題／${res.scannedStudents || 0} 位學生。舊資料仍保留。`;
+        status.className = "text-sm mt-3 font-medium text-green-600";
+        status.classList.remove("hidden");
+    } catch (err) {
+        status.textContent = "錯題 V2 搬移失敗：" + err.message;
+        status.className = "text-sm mt-3 font-medium text-red-500";
+        status.classList.remove("hidden");
+    } finally {
+        btn.disabled = false;
+        btn.textContent = oldText;
     }
 }
 
@@ -3795,6 +3824,7 @@ async function postGAS(obj) {
         "syncFirebaseV1685",
         "validateStudentEmailsV19",
         "syncFirestoreScoresToSheetsV19",
+        "migrateWrongQuestionsV2",
         "getFirebaseBootstrap",
         "getSyncStatusV19",
         "getTeacherData"

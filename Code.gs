@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.918 slim
+// Google Apps Script — 題庫系統 v1.922 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,6 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
+const APP_VERSION = "v1.922";
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -21,7 +22,7 @@ function doGet(e) {
   return jsonResponse({
     status: "ok",
     service: "quiz-gas-slim",
-    version: "v1.918",
+    version: APP_VERSION,
     message: "學生端不使用 GAS；請由後台執行同步。"
   });
 }
@@ -37,6 +38,7 @@ function doPost(e) {
     if (action === "validateStudentEmailsV19") return jsonResponse(validateStudentEmailsV19());
     if (action === "getSyncStatusV19") return handleGetSyncStatusV19();
     if (action === "syncFirestoreScoresToSheetsV19") return handleSyncFirestoreScoresToSheetsV19(payload);
+    if (action === "migrateWrongQuestionsV2") return handleMigrateWrongQuestionsV2();
     if (action === "getTeacherData") return handleGetTeacherDataSlim();
     return jsonResponse({
       status: "error",
@@ -264,7 +266,7 @@ function readQuestionsForFirebaseV19(ss) {
   var cLectureTitle = findColIdx(headers, ["講義標題", "講義名稱", "lectureTitle", "handoutTitle"]);
   var cLectureUrl = findColIdx(headers, ["講義連結", "講義網址", "講義URL", "lectureUrl", "handoutUrl", "handout"]);
 
-  var version = "QB_" + sheet.getLastRow() + "_" + Utilities.formatDate(new Date(), "Asia/Taipei", "yyyyMMddHHmmss");
+  var version = "";
   var out = [];
   var seen = {};
   var lastImgUrl = "";
@@ -350,7 +352,7 @@ function readQuestionsForFirebaseV19(ss) {
       lectureTitle: getCell(row, cLectureTitle),
       lectureUrl: getCell(row, cLectureUrl),
       questionBankVersion: version,
-      updatedAtText: localNow()
+      updatedAtText: ""
     });
   }
   return out;
@@ -371,10 +373,13 @@ function buildTopics(questions) {
       chapter: q.chapter || q.chapterName || "",
       category: q.category || q.top,
       lectureTitle: q.lectureTitle || "",
-      lectureUrl: q.lectureUrl || ""
+      lectureUrl: q.lectureUrl || "",
+      bundleId: "topic_" + stableHashText(q.top).slice(0, 24),
+      cogTypes: []
     };
     if (!map[q.top].lectureUrl && q.lectureUrl) map[q.top].lectureUrl = q.lectureUrl;
     if (!map[q.top].lectureTitle && q.lectureTitle) map[q.top].lectureTitle = q.lectureTitle;
+    if (q.cogType && map[q.top].cogTypes.indexOf(q.cogType) === -1) map[q.top].cogTypes.push(q.cogType);
     map[q.top].count += 1;
   });
   return Object.keys(map).sort(function(a, b) {
@@ -476,9 +481,25 @@ function buildFirebasePayloadV19() {
   var firstRow = qSheet.getRange(1, 1, 1, Math.max(10, qSheet.getLastColumn())).getValues()[0];
   var settings = readSettings(ss);
   var questions = readQuestionsForFirebaseV19(ss);
+  var bankHash = stableHashText(JSON.stringify(questions.map(function(q) {
+    var item = stripQuestionForBundleV19(q);
+    delete item.questionBankVersion;
+    return item;
+  })));
+  var bankVersion = "QB_" + bankHash.slice(0, 24);
+  questions.forEach(function(q) { q.questionBankVersion = bankVersion; });
   var topics = buildTopics(questions);
   var questionBundle = buildQuestionBundleV19(questions);
+  var chapterBank = buildChapterQuestionBankV1920(questions, topics, bankHash, bankVersion);
+  var chapterHashByName = {};
+  chapterBank.chapters.forEach(function(c) { chapterHashByName[c.name] = c.contentHash; });
+  topics.forEach(function(t) { t.chapterHash = chapterHashByName[t.name] || ""; });
   var students = readStudentsForFirebaseV19(ss);
+  var studentHash = stableHashText(JSON.stringify(students.map(function(s) {
+    var copy = Object.assign({}, s);
+    delete copy.updatedAtText;
+    return copy;
+  })));
   var firstCell = firstRow[0] ? String(firstRow[0]).trim() : "";
   var title = settings.systemTitle || (firstCell && firstCell !== "科目ID" ? firstCell : "動態題庫測驗");
   var titleColor = settings.titleColor || (firstRow[9] ? String(firstRow[9]).trim() : "sky");
@@ -489,10 +510,13 @@ function buildFirebasePayloadV19() {
     settings: {
       title: title,
       titleColor: titleColor,
-      version: "v1.918",
+      version: APP_VERSION,
       authMode: "google",
       topics: topics,
       questionBundlePath: "questionBundles/current",
+      questionLoadMode: "chapterBundle",
+      activeQuestionBankPath: "questionBanks/" + bankHash,
+      activeQuestionBankHash: bankHash,
       completionSettings: settings,
       allClassList: Object.keys(classMap).sort(function(a, b) { return a.localeCompare(b, "zh-TW"); }),
       deadline: settings.deadline || "",
@@ -501,6 +525,9 @@ function buildFirebasePayloadV19() {
     },
     questions: questions,
     questionBundle: questionBundle,
+    chapterBank: chapterBank,
+    bankHash: bankHash,
+    studentHash: studentHash,
     students: students,
     counts: {
       questions: questions.length,
@@ -510,6 +537,73 @@ function buildFirebasePayloadV19() {
       subjects: uniqueCount(questions.map(function(q) { return q.subject || "未設定科目"; })),
       googleLoginStudents: students.filter(function(s) { return s.email && s.enabled !== false; }).length
     }
+  };
+}
+
+function stableHashText(text) {
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(text || ""), Utilities.Charset.UTF_8);
+  return digest.map(function(b) {
+    var n = b < 0 ? b + 256 : b;
+    return ("0" + n.toString(16)).slice(-2);
+  }).join("");
+}
+
+function buildChapterQuestionBankV1920(questions, topics, bankHash, bankVersion) {
+  var topicMeta = {};
+  topics.forEach(function(t) { topicMeta[t.name] = t; });
+  var groups = {};
+  questions.forEach(function(q) {
+    var key = q.top || "未分類";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(q);
+  });
+  var chapters = Object.keys(groups).sort().map(function(name) {
+    var items = groups[name].map(function(q) {
+      var item = stripQuestionForBundleV19(q);
+      delete item.questionBankVersion;
+      return item;
+    });
+    var chunks = [];
+    var current = [];
+    var currentBytes = 2;
+    items.forEach(function(item) {
+      var itemBytes = Utilities.newBlob(JSON.stringify(item)).getBytes().length + 2;
+      if (current.length && (current.length >= 50 || currentBytes + itemBytes > 700 * 1024)) {
+        var id = String(chunks.length + 1).padStart(3, "0");
+        chunks.push({ id: id, index: chunks.length + 1, count: current.length, questions: current });
+        current = [];
+        currentBytes = 2;
+      }
+      current.push(item);
+      currentBytes += itemBytes;
+    });
+    if (current.length) {
+      var lastId = String(chunks.length + 1).padStart(3, "0");
+      chunks.push({ id: lastId, index: chunks.length + 1, count: current.length, questions: current });
+    }
+    return {
+      id: topicMeta[name].bundleId,
+      name: name,
+      contentHash: stableHashText(JSON.stringify(items)),
+      questionCount: items.length,
+      chunkIds: chunks.map(function(c) { return c.id; }),
+      chunks: chunks
+    };
+  });
+  return {
+    manifest: {
+      version: APP_VERSION,
+      schema: "questionBank/chapterBundle/v2",
+      contentHash: bankHash,
+      questionBankVersion: bankVersion,
+      questionCount: questions.length,
+      chapterCount: chapters.length,
+      chapters: chapters.map(function(c) {
+        return { id: c.id, name: c.name, contentHash: c.contentHash, questionCount: c.questionCount, chunkIds: c.chunkIds };
+      }),
+      updatedAtText: localNow()
+    },
+    chapters: chapters
   };
 }
 
@@ -544,7 +638,7 @@ function buildQuestionBundleV19(questions) {
   });
   return {
     manifest: {
-      version: "v1.918",
+      version: APP_VERSION,
       schema: "questionBundle/v1",
       chunkSize: maxQuestionsPerChunk,
       chunkCount: chunkDocs.length,
@@ -607,6 +701,9 @@ function uniqueCount(values) {
 }
 
 function handleSyncFirebaseV19(payload) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return jsonResponse({ status: "busy", message: "已有另一個 Firebase 同步正在執行" });
+  try {
   var props = PropertiesService.getScriptProperties();
   var projectId = props.getProperty("FIREBASE_PROJECT_ID");
   if (!projectId) return jsonResponse({ status: "needs_config", message: "尚未設定 FIREBASE_PROJECT_ID", data: buildFirebasePayloadV19() });
@@ -618,40 +715,112 @@ function handleSyncFirebaseV19(payload) {
   }
 
   var token = firebaseAccessToken();
+  var previousStatus = firebaseGetDocumentV1920(projectId, token, "syncStatus/main") || {};
+  var questionBankChanged = previousStatus.activeQuestionBankHash !== data.bankHash;
+  var studentsChanged = props.getProperty("LAST_STUDENT_SYNC_HASH") !== data.studentHash;
+  var previousManifest = previousStatus.activeQuestionBankHash
+    ? (firebaseGetDocumentV1920(projectId, token, "questionBanks/" + previousStatus.activeQuestionBankHash) || {})
+    : {};
+  var previousChapterHashes = {};
+  (previousManifest.chapters || []).forEach(function(c) { if (c.contentHash) previousChapterHashes[c.contentHash] = true; });
   var writes = [];
+  if (questionBankChanged) {
+    writes.push({ update: { name: firestoreDocName(projectId, "questionBanks", data.bankHash), fields: firebaseFields(data.chapterBank.manifest) } });
+    data.chapterBank.chapters.forEach(function(chapter) {
+      if (previousChapterHashes[chapter.contentHash]) return;
+      var chapterFields = {
+        id: chapter.id, name: chapter.name, contentHash: chapter.contentHash,
+        questionCount: chapter.questionCount, chunkIds: chapter.chunkIds,
+        questionBankVersion: data.chapterBank.manifest.questionBankVersion
+      };
+      writes.push({ update: { name: firestoreDocName(projectId, "questionChapterBundles", chapter.contentHash), fields: firebaseFields(chapterFields) } });
+      chapter.chunks.forEach(function(chunk) {
+        writes.push({ update: { name: firestoreDocName(projectId, "questionChapterBundles/" + chapter.contentHash + "/chunks", chunk.id), fields: firebaseFields(chunk) } });
+      });
+    });
+  }
+  if (studentsChanged) {
+    data.students.forEach(function(s) {
+      writes.push(firebaseMergeWrite(projectId, "students", s.studentId, s));
+      if (s.email && s.emailKey) writes.push(firebaseMergeWrite(projectId, "studentsByEmail", s.emailKey, s));
+    });
+  }
+  var publicConfig = {
+    title: data.settings.title,
+    titleColor: data.settings.titleColor,
+    version: APP_VERSION,
+    loginCards: data.settings.completionSettings.loginCards || []
+  };
+  writes.push({ update: { name: firestoreDocName(projectId, "publicConfig", "main"), fields: firebaseFields(publicConfig) } });
+  // 指標最後切換，避免學生讀到尚未完成的章節版本。
   writes.push({ update: { name: firestoreDocName(projectId, "system", "main"), fields: firebaseFields(data.settings) } });
-  writes.push({ update: { name: firestoreDocName(projectId, "questionBundles", "current"), fields: firebaseFields(data.questionBundle.manifest) } });
-  data.questionBundle.chunks.forEach(function(chunk) {
-    writes.push({ update: { name: firestoreDocName(projectId, "questionBundles/current/chunks", chunk.id), fields: firebaseFields(chunk) } });
-  });
-  data.questions.forEach(function(q) {
-    writes.push({ update: { name: firestoreDocName(projectId, "questions", q.firebaseQuestionId), fields: firebaseFields(q) } });
-  });
-  data.students.forEach(function(s) {
-    writes.push({ update: { name: firestoreDocName(projectId, "students", s.studentId), fields: firebaseFields(s) } });
-    if (s.email && s.emailKey) writes.push({ update: { name: firestoreDocName(projectId, "studentsByEmail", s.emailKey), fields: firebaseFields(s) } });
-  });
   writes.push({ update: { name: firestoreDocName(projectId, "syncStatus", "main"), fields: firebaseFields({
-    version: "v1.918",
+    version: APP_VERSION,
     mode: "slim",
     firebaseProjectId: projectId,
     lastQuestionSyncAt: localNow(),
-    counts: data.counts
+    counts: data.counts,
+    activeQuestionBankHash: data.bankHash,
+    questionBankChanged: questionBankChanged
   }) } });
   firebaseBatchWrite(projectId, token, writes);
-  return jsonResponse({ status: "ok", message: "Firebase 同步完成（slim + question bundle）", counts: data.counts, written: writes.length, generatedAt: data.generatedAt });
+  props.setProperty("LAST_STUDENT_SYNC_HASH", data.studentHash);
+  return jsonResponse({ status: "ok", message: "Firebase 同步完成（章節 bundle + 差異同步）", counts: data.counts, written: writes.length, questionBankChanged: questionBankChanged, studentsChanged: studentsChanged, generatedAt: data.generatedAt });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function firebaseGetDocumentV1920(projectId, token, path) {
+  var url = "https://firestore.googleapis.com/v1/projects/" + projectId + "/databases/(default)/documents/" + path;
+  var res = UrlFetchApp.fetch(url, { method: "get", headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true });
+  if (res.getResponseCode() === 404) return null;
+  if (res.getResponseCode() >= 300) throw new Error("Firestore 文件讀取失敗：" + res.getContentText());
+  return parseFirebaseFields((JSON.parse(res.getContentText()) || {}).fields || {});
 }
 
 function handleGetSyncStatusV19() {
   var props = PropertiesService.getScriptProperties();
   return jsonResponse({
     status: "ok",
-    version: "v1.918",
+    version: APP_VERSION,
     mode: "slim",
     firebaseProjectId: props.getProperty("FIREBASE_PROJECT_ID") || "",
     studentEmailCheck: validateStudentEmailsV19(),
     generatedAt: localNow()
   });
+}
+
+function handleMigrateWrongQuestionsV2() {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (!projectId) return jsonResponse({ status: "needs_config", message: "尚未設定 FIREBASE_PROJECT_ID" });
+  var token = firebaseAccessToken();
+  var questions = readQuestionsForFirebaseV19(SpreadsheetApp.getActiveSpreadsheet());
+  var questionMap = {};
+  questions.forEach(function(q) { questionMap[q.firebaseQuestionId] = q; });
+  var progressDocs = listFirestoreCollection(projectId, token, "studentProgress", 300);
+  var writes = [];
+  progressDocs.forEach(function(doc) {
+    var progress = parseFirebaseFields(doc.fields || {});
+    var studentId = String(progress.studentId || doc.name.split("/").pop());
+    var active = progress.activeWrongQuestions || {};
+    var times = progress.activeWrongQuestionTimes || {};
+    Object.keys(active).forEach(function(qid) {
+      if (!active[qid]) return;
+      var q = questionMap[qid] || {};
+      writes.push({ update: {
+        name: firestoreDocName(projectId, "students/" + firebaseSafeDocId(studentId) + "/wrongQuestions", firebaseSafeDocId(qid)),
+        fields: firebaseFields({
+          uid: progress.uid || "", studentId: studentId, questionId: qid,
+          chapterId: q.chapterId || "", topic: q.top || "未分類", active: true,
+          wrongCount: 1, clientLastWrongAt: times[qid] || "", source: "migration-v1.921"
+        })
+      } });
+    });
+  });
+  firebaseBatchWrite(projectId, token, writes);
+  return jsonResponse({ status: "ok", message: "錯題 V2 搬移完成", scannedStudents: progressDocs.length, migrated: writes.length });
 }
 
 function firebaseSafeDocId(id) {
@@ -680,6 +849,14 @@ function firebaseFields(obj) {
   var fields = {};
   Object.keys(obj || {}).forEach(function(k) { fields[k] = firebaseValue(obj[k]); });
   return fields;
+}
+
+function firebaseMergeWrite(projectId, collection, id, obj) {
+  var fields = firebaseFields(obj);
+  return {
+    update: { name: firestoreDocName(projectId, collection, id), fields: fields },
+    updateMask: { fieldPaths: Object.keys(fields) }
+  };
 }
 
 function firebaseJwtBase64(objOrBytes) {
@@ -814,6 +991,34 @@ function listFirestoreCollection(projectId, token, collection, pageSize) {
   return docs;
 }
 
+function queryAnswerBatchesSinceV1922(projectId, token, cursorIso) {
+  if (!cursorIso) return listFirestoreCollection(projectId, token, "answerBatches", 300);
+  var cursorTime = new Date(cursorIso);
+  var overlapIso = isNaN(cursorTime.getTime()) ? cursorIso : new Date(cursorTime.getTime() - 5000).toISOString();
+  var url = "https://firestore.googleapis.com/v1/projects/" + projectId + "/databases/(default)/documents:runQuery";
+  var body = {
+    structuredQuery: {
+      from: [{ collectionId: "answerBatches" }],
+      where: { fieldFilter: {
+        field: { fieldPath: "clientCreatedAt" },
+        op: "GREATER_THAN_OR_EQUAL",
+        value: { stringValue: overlapIso }
+      } },
+      orderBy: [{ field: { fieldPath: "clientCreatedAt" }, direction: "ASCENDING" }]
+    }
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) throw new Error("Firestore 增量成績查詢失敗：" + res.getContentText());
+  var rows = JSON.parse(res.getContentText() || "[]");
+  return rows.map(function(row) { return row.document; }).filter(Boolean);
+}
+
 function compressDetailsJson(jsonStr) {
   if (!jsonStr) return "";
   try {
@@ -842,10 +1047,14 @@ function handleSyncFirestoreScoresToSheetsV19(payload) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ensureScoreSheet(ss);
   var existing = existingBatchIds(sheet);
-  var docs = listFirestoreCollection(projectId, token, "answerBatches", 300);
+  var lastCursor = props.getProperty("LAST_SCORE_CURSOR_ISO") || "";
+  var docs = queryAnswerBatchesSinceV1922(projectId, token, lastCursor);
   var rows = [];
+  var maxCursor = lastCursor;
   docs.forEach(function(doc) {
     var item = parseFirebaseFields(doc.fields || {});
+    var itemCursor = String(item.clientCreatedAt || "");
+    if (itemCursor && (!maxCursor || itemCursor > maxCursor)) maxCursor = itemCursor;
     var batchId = item.batchId || doc.name.split("/").pop();
     if (existing[batchId]) return;
     var created = item.clientCreatedAt || item.createdAt || "";
@@ -870,6 +1079,7 @@ function handleSyncFirestoreScoresToSheetsV19(payload) {
   });
   rows.sort(function(a, b) { return String(a[0]).localeCompare(String(b[0])); });
   if (rows.length) sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SCORE_HEADERS.length).setValues(rows);
+  if (maxCursor) props.setProperty("LAST_SCORE_CURSOR_ISO", maxCursor);
   props.setProperty("LAST_SCORE_SYNC_AT", localNow());
-  return jsonResponse({ status: "ok", message: "已同步 Firebase 成績回 Sheet", appended: rows.length, scanned: docs.length });
+  return jsonResponse({ status: "ok", message: "已增量同步 Firebase 成績回 Sheet", appended: rows.length, scanned: docs.length, cursor: maxCursor });
 }
