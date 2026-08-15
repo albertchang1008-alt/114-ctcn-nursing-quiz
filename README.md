@@ -1,4 +1,4 @@
-# 題庫系統 v1.922 佈建說明
+# 題庫系統 v1.923 佈建說明
 
 ## 文件維護規則
 
@@ -15,9 +15,9 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.922
-日期：2026-08-15
-重點：登入優先、章節題庫差異同步、錯題 V2 與成績增量回寫。
+版本：v1.923
+日期：2026-08-16
+重點：修正章節懶載入後，測驗題數彈窗錯誤顯示全部／已作答／未作答皆為 0。
 ```
 
 ## v1.919～v1.922 改造摘要
@@ -38,6 +38,13 @@ GAS / Firebase 同步狀態中的版本號
 4. 部署 `firebase-config.js`、`firebase-v1685.js`、`index.html`、`admin.html`。
 5. 後台按一次「搬移錯題 V2」；此動作不刪除舊資料。
 6. 驗證登入、單章、綜合測驗、錯題兩種模式及成績增量回寫。
+
+## v1.923 章節題數彈窗修正
+
+- 根因：v1.922 已取消登入後預載完整題庫，但測驗題數彈窗仍從 `allQuestionsForMenu` 計數，因此章節卡片雖有題數，彈窗卻得到 0 並停用所有題數按鈕。
+- 修正：加入章節級 `topicQuestionsCache`；點「測驗」時載入該章 bundle，並用實際題目 ID 和 `studentProgress.attemptedQuestions` 計算已作答／未作答。
+- 容錯：章節 bundle 尚在載入或失敗時，先使用 topic metadata 的 `count`，不再把有題目的章節判定為 0。
+- 競態保護：快速切換不同章節時，較早完成的請求不會覆蓋目前彈窗。
 
 ## 版本定位
 
@@ -711,7 +718,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.922"
+git commit -m "Release v1.923"
 git push
 ```
 

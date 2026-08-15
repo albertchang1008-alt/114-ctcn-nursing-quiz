@@ -10,7 +10,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
     <script src="firebase-config.js"></script>
-    <script src="firebase-v1685.js?v=1922"></script>
+    <script src="firebase-v1685.js?v=1923"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -696,7 +696,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.922 ／ 登入優先 + 章節題庫 + 錯題 V2">v1.922</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.923 ／ 修正章節題數彈窗">v1.923</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1572,6 +1572,7 @@ let selectedSubjectKey = "";
 let pendingQuizTopic   = "";
 let pendingQuizTopicMeta = null;
 let allQuestionsForMenu = [];
+const topicQuestionsCache = {};
 
 // ── Chart 實例 ──
 let progressChartInst = null;
@@ -2061,37 +2062,29 @@ function getQuestionKey(q, idx = 0) {
 }
 
 function getTopicQuestionsFromCache(topic) {
+    if (topic !== "綜合練習" && Array.isArray(topicQuestionsCache[topic])) {
+        return topicQuestionsCache[topic];
+    }
     const list = allQuestionsForMenu || [];
     return topic === "綜合練習"
         ? list
         : list.filter(q => (q.top || "未分類") === topic);
 }
 
-function getTopicQuestionStats(topic) {
+function getTopicQuestionStats(topic, topicMeta = null) {
     const questions = getTopicQuestionsFromCache(topic);
     const attemptedMap = myProgressCache?.attemptedQuestions || {};
     const attempted = questions.filter((q, idx) => attemptedMap[getQuestionKey(q, idx)]).length;
+    const metadataTotal = Number(topicMeta?.count || 0);
+    const total = questions.length || metadataTotal;
     return {
-        total: questions.length,
+        total,
         attempted,
-        remaining: Math.max(questions.length - attempted, 0)
+        remaining: Math.max(total - attempted, 0)
     };
 }
 
-function openQuizCountModal(topic, topicMeta = null) {
-    pendingQuizTopic = topic;
-    pendingQuizTopicMeta = topicMeta || topicsData.find(t => t.name === topic) || null;
-    const modal = document.getElementById("quiz-count-modal");
-    const title = document.getElementById("quiz-count-title");
-    const subtitle = document.getElementById("quiz-count-subtitle");
-    const statsBox = document.getElementById("quiz-count-stats");
-    const chapterId = String(pendingQuizTopicMeta?.chapterId || "").trim();
-    const chapterName = String(pendingQuizTopicMeta?.chapterName || pendingQuizTopicMeta?.chapter || topic || "").trim();
-    const subjectName = String(pendingQuizTopicMeta?.subjectName || pendingQuizTopicMeta?.subject || "").trim();
-    const stats = getTopicQuestionStats(topic);
-
-    title.textContent = "選擇測驗題數";
-    subtitle.textContent = `${subjectName ? subjectName + "｜" : ""}${chapterId ? chapterId + " " : ""}${chapterName}`;
+function renderQuizCountStats(modal, statsBox, stats) {
     statsBox.innerHTML = `
         <div class="rounded-xl bg-sky-50 border border-sky-100 p-3 text-center">
             <div class="text-xs text-sky-500 font-bold">全部題目</div>
@@ -2114,8 +2107,36 @@ function openQuizCountModal(topic, topicMeta = null) {
         btn.classList.toggle("cursor-not-allowed", btn.disabled);
         btn.onclick = () => startConfiguredQuiz(raw);
     });
+}
+
+async function openQuizCountModal(topic, topicMeta = null) {
+    pendingQuizTopic = topic;
+    pendingQuizTopicMeta = topicMeta || topicsData.find(t => t.name === topic) || null;
+    const modal = document.getElementById("quiz-count-modal");
+    const title = document.getElementById("quiz-count-title");
+    const subtitle = document.getElementById("quiz-count-subtitle");
+    const statsBox = document.getElementById("quiz-count-stats");
+    const chapterId = String(pendingQuizTopicMeta?.chapterId || "").trim();
+    const chapterName = String(pendingQuizTopicMeta?.chapterName || pendingQuizTopicMeta?.chapter || topic || "").trim();
+    const subjectName = String(pendingQuizTopicMeta?.subjectName || pendingQuizTopicMeta?.subject || "").trim();
+
+    title.textContent = "選擇測驗題數";
+    subtitle.textContent = `${subjectName ? subjectName + "｜" : ""}${chapterId ? chapterId + " " : ""}${chapterName}`;
     modal.classList.remove("hidden");
     modal.classList.add("flex");
+
+    // v1.922 修正：章節懶載入後，舊的完整題庫快取為空，不能用它判定題數。
+    renderQuizCountStats(modal, statsBox, getTopicQuestionStats(topic, pendingQuizTopicMeta));
+    try {
+        if (!myProgressCache && studentId) await loadMyCompletion();
+        const chapterQuestions = await window.Firebase1685.loadChapterQuestions(pendingQuizTopicMeta || topic);
+        topicQuestionsCache[topic] = chapterQuestions || [];
+        if (pendingQuizTopic !== topic) return;
+        // 使用實際章節文件重新計算，包含準確的已作答／未作答數。
+        renderQuizCountStats(modal, statsBox, getTopicQuestionStats(topic, pendingQuizTopicMeta));
+    } catch (err) {
+        console.warn("[v1.923] 測驗題數統計載入失敗，保留章節 metadata 題數：", err);
+    }
 }
 
 function closeQuizCountModal() {
@@ -2198,8 +2219,9 @@ async function loadTopicQuestions(topic, flashcard, requestedCount = null) {
             data = topic === "綜合練習"
                 ? await window.Firebase1685.loadTopicsQuestions(topicsData.map(t => t.name))
                 : await window.Firebase1685.loadChapterQuestions(topic);
+            if (topic !== "綜合練習" && Array.isArray(data)) topicQuestionsCache[topic] = data;
         } catch (err) {
-            console.warn("[v1.922] Firebase 章節題目讀取失敗：", err);
+            console.warn("[v1.923] Firebase 章節題目讀取失敗：", err);
             throw err;
         }
     }

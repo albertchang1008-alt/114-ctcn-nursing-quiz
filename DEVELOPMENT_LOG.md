@@ -449,3 +449,16 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 內容雜湊重複計算一致；模擬三題兩章成功產生兩份章節 manifest/chunks。
 - 已確認登入前程式只呼叫 `loadPublicConfig()`，登入後 `loadBootstrap()` 才能讀系統與章節 metadata。
 - 正式環境實際 Firestore reads/writes、rules、OAuth、GAS REST 與手機登入仍需部署驗收。
+# v1.923 - 2026-08-16
+
+### 問題
+
+- v1.922 章節卡片可顯示正確題數，但點「測驗」後題數彈窗顯示全部、已作答、未作答皆為 0，所有題數按鈕被停用。
+- 原因是章節懶載入後 `allQuestionsForMenu` 固定為空，舊彈窗仍以該完整題庫快取計數。
+
+### 修正與驗收
+
+- 新增章節級題目快取，彈窗開啟時讀取所選章節 bundle，再依 Firebase 題目 ID 計算作答狀態。
+- topic metadata `count` 作為載入前與錯誤時的 fallback，確保有題目的章節不會顯示 0。
+- 加入快速切換章節的非同步競態保護。
+- `index.html` inline JavaScript 語法與題數統計測試通過。
