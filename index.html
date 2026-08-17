@@ -351,6 +351,15 @@
 </div>
 <div id="deadline-spacer" class="hidden" style="height:38px;"></div>
 
+<!-- v1.926 本次測驗倒數：每題 60 秒，測驗期間取代整體截止日期提示 -->
+<div id="quiz-timer-bar" class="hidden fixed top-0 left-0 right-0 z-50 text-center text-sm font-bold py-2 px-4 shadow-md"
+  style="background:#075985;color:white;">
+  <span id="quiz-timer-icon">⏱️</span>
+  <span id="quiz-timer-label">本次測驗剩餘</span>
+  <span id="quiz-timer-countdown" class="ml-1 font-mono tracking-wide">00:00</span>
+</div>
+<div id="quiz-timer-spacer" class="hidden" style="height:38px;"></div>
+
 <button id="style-toggle-btn" type="button" onclick="toggleStudyStyle()" aria-label="切換前端風格">淺色</button>
 
 <!-- ══════════════════════════════════════════ -->
@@ -1518,6 +1527,7 @@ async function tryRestoreLocalSession(user) {
 
 // ★ v1.3 倒數計時器
 let deadlineTimer = null;
+let deadlineConfigured = false;
 
 function initDeadline(deadlineStr) {
     if (!deadlineStr) return;
@@ -1530,6 +1540,7 @@ function initDeadline(deadlineStr) {
     const label    = document.getElementById("deadline-label");
     const countdown = document.getElementById("deadline-countdown");
 
+    deadlineConfigured = true;
     bar.classList.remove("hidden");
     spacer.classList.remove("hidden");
 
@@ -1601,6 +1612,13 @@ let currentStudentProfile = null;
 let currentGoogleUser  = null;
 let isLoggedIn         = false;  // ★ v1.5 登入狀態旗標
 let quizStartTime      = 0;       // ★ v1.6 測驗開始時間
+const QUIZ_SECONDS_PER_QUESTION = 60; // v1.926 每題最長作答秒數
+let quizTimer          = null;
+let quizDeadlineTime   = 0;
+let quizTimeLimitSeconds = 0;
+let quizDurationSeconds  = 0;
+let quizTimedOut       = false;
+let quizSubmitting     = false;
 let currentSelectedTopic = "";
 let quizSession        = [];   // 當前測驗題目（含學生作答）
 let currentQuestionIndex = 0;
@@ -2215,7 +2233,6 @@ async function loadAndStartQuiz(topic, requestedCount = 20) {
     currentSelectedTopic = topic;
     isRetryMode   = false;
     attemptCount++;
-    quizStartTime = Date.now(); // ★ v1.6 記錄測驗開始時間
     hide("topic-section");
     // 完成度已整合進 topic-section，進入答題時 topic-section 本身就隱藏
     // 顯示載入中（借用 submitting-section）
@@ -2388,8 +2405,120 @@ function prepareQuiz(sources) {
     // 完成度已整合進 topic-section
     show("quiz-section");
     hide("finish-btn-area");
+    const submitBtn = document.querySelector("#finish-btn-area button");
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "📤 送出答案";
+    }
     document.getElementById("quiz-topic-title").textContent = currentSelectedTopic;
     renderQuestion();
+    startQuizTimer(quizSession.length);
+}
+
+// v1.926 每題 60 秒：題目顯示後才開始計時，載入時間不列入。
+function startQuizTimer(questionCount) {
+    stopQuizTimer(false);
+
+    const safeCount = Math.max(0, Number(questionCount) || 0);
+    if (!safeCount) return;
+
+    quizTimeLimitSeconds = safeCount * QUIZ_SECONDS_PER_QUESTION;
+    quizStartTime = Date.now();
+    quizDeadlineTime = quizStartTime + quizTimeLimitSeconds * 1000;
+    quizDurationSeconds = 0;
+    quizTimedOut = false;
+    quizSubmitting = false;
+
+    // 測驗中優先顯示本次倒數，避免與整體作答截止日期重疊。
+    document.getElementById("deadline-bar")?.classList.add("hidden");
+    document.getElementById("deadline-spacer")?.classList.add("hidden");
+    document.getElementById("style-toggle-btn")?.classList.add("hidden");
+    document.getElementById("quiz-timer-bar")?.classList.remove("hidden");
+    document.getElementById("quiz-timer-spacer")?.classList.remove("hidden");
+
+    updateQuizTimer();
+    quizTimer = setInterval(updateQuizTimer, 1000);
+}
+
+function formatQuizCountdown(totalSeconds) {
+    const safe = Math.max(0, Number(totalSeconds) || 0);
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const seconds = safe % 60;
+    if (hours > 0) {
+        return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+    }
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function updateQuizTimer() {
+    if (!quizDeadlineTime || quizTimedOut) return;
+
+    const remaining = Math.max(0, Math.ceil((quizDeadlineTime - Date.now()) / 1000));
+    const bar = document.getElementById("quiz-timer-bar");
+    const icon = document.getElementById("quiz-timer-icon");
+    const label = document.getElementById("quiz-timer-label");
+    const countdown = document.getElementById("quiz-timer-countdown");
+    if (!bar || !icon || !label || !countdown) return;
+
+    const questionCount = quizSession.length;
+    label.textContent = `本次測驗剩餘（${questionCount} 題 × ${QUIZ_SECONDS_PER_QUESTION} 秒）`;
+    countdown.textContent = formatQuizCountdown(remaining);
+
+    if (remaining <= 60) {
+        bar.style.background = "#991b1b";
+        icon.textContent = "🔴";
+    } else if (remaining <= Math.ceil(quizTimeLimitSeconds * 0.2)) {
+        bar.style.background = "#92400e";
+        icon.textContent = "⚠️";
+    } else {
+        bar.style.background = "#075985";
+        icon.textContent = "⏱️";
+    }
+
+    if (remaining === 0) handleQuizTimeout();
+}
+
+function stopQuizTimer(restoreDeadline = true) {
+    if (quizTimer) clearInterval(quizTimer);
+    quizTimer = null;
+
+    if (quizStartTime > 0) {
+        const elapsed = Math.max(0, Math.round((Date.now() - quizStartTime) / 1000));
+        quizDurationSeconds = quizTimedOut
+            ? quizTimeLimitSeconds
+            : Math.min(elapsed, quizTimeLimitSeconds || elapsed);
+    }
+    quizStartTime = 0;
+
+    quizDeadlineTime = 0;
+    document.getElementById("quiz-timer-bar")?.classList.add("hidden");
+    document.getElementById("quiz-timer-spacer")?.classList.add("hidden");
+    document.getElementById("style-toggle-btn")?.classList.remove("hidden");
+
+    if (restoreDeadline && deadlineConfigured) {
+        document.getElementById("deadline-bar")?.classList.remove("hidden");
+        document.getElementById("deadline-spacer")?.classList.remove("hidden");
+    }
+}
+
+function handleQuizTimeout() {
+    if (quizTimedOut || quizSubmitting) return;
+    quizTimedOut = true;
+    if (quizTimer) clearInterval(quizTimer);
+    quizTimer = null;
+
+    const bar = document.getElementById("quiz-timer-bar");
+    const icon = document.getElementById("quiz-timer-icon");
+    const label = document.getElementById("quiz-timer-label");
+    const countdown = document.getElementById("quiz-timer-countdown");
+    if (bar) bar.style.background = "#991b1b";
+    if (icon) icon.textContent = "🔒";
+    if (label) label.textContent = "作答時間已結束，正在自動交卷";
+    if (countdown) countdown.textContent = "00:00";
+
+    document.querySelectorAll("#quiz-section button").forEach(btn => btn.disabled = true);
+    submitQuiz({ allowUnanswered: true, timedOut: true });
 }
 
 // ── 渲染題目（純前端，立即顯示）──
@@ -2515,16 +2644,25 @@ function goNextQuestion() {
 // ══════════════════════════════════════════════
 //  5. 送出答案 → 本機判分 → 一次送出 Firebase
 // ══════════════════════════════════════════════
-async function submitQuiz() {
+async function submitQuiz(options = {}) {
+    if (quizSubmitting) return;
+
     const unanswered = quizSession.filter(q => q.userSelectedIndex === null || q.userSelectedIndex === undefined).length;
-    if (unanswered > 0) {
+    const allowUnanswered = Boolean(options.allowUnanswered || quizTimedOut);
+    if (unanswered > 0 && !allowUnanswered) {
         alert(`尚有 ${unanswered} 題未作答，請完成後再交卷。`);
         return;
     }
+
+    quizSubmitting = true;
+    if (options.timedOut) quizTimedOut = true;
+    stopQuizTimer(true);
     hide("quiz-section");
     show("submitting-section");
     document.querySelector("#submitting-section h2").textContent = "正在判分...";
-    document.querySelector("#submitting-section p").textContent  = "以 Firebase 題庫答案為準";
+    document.querySelector("#submitting-section p").textContent = quizTimedOut
+        ? `時間到，${unanswered} 題未作答並自動交卷`
+        : "以 Firebase 題庫答案為準";
 
     try {
         const res = judgeBatchLocally();
@@ -2545,12 +2683,26 @@ async function submitQuiz() {
         });
 
         hide("submitting-section");
+        quizSubmitting = false;
         showResults(scoreCorrect);
 
     } catch (err) {
+        quizSubmitting = false;
         hide("submitting-section");
         show("quiz-section");
         show("finish-btn-area");
+        if (quizTimedOut) {
+            // 截止後即使送出失敗，也只能重新送出，不能再修改答案。
+            document.querySelectorAll("#quiz-section button").forEach(btn => btn.disabled = true);
+            const submitBtn = document.querySelector("#finish-btn-area button");
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = "📤 重新送出截止時答案";
+            }
+        } else {
+            document.querySelectorAll("#quiz-section button").forEach(btn => btn.disabled = false);
+            renderQuizNav();
+        }
         alert("送出失敗：" + err.message + "\n請檢查網路後重試");
     }
 }
@@ -2604,7 +2756,8 @@ function showResults(scoreCorrect) {
     document.getElementById("result-score").textContent   = scoreCalc;
     document.getElementById("result-correct").textContent = scoreCorrect;
     document.getElementById("result-wrong").textContent   = wrong;
-    document.getElementById("tag-mode-top").textContent   = `${isRetryMode?"錯題重做":"完整測驗"} — ${currentSelectedTopic}`;
+    const timeoutLabel = quizTimedOut ? "（時間到自動交卷）" : "";
+    document.getElementById("tag-mode-top").textContent   = `${isRetryMode?"錯題重做":"完整測驗"}${timeoutLabel} — ${currentSelectedTopic}`;
     document.getElementById("tag-attempt").textContent    = `第 ${attemptCount} 次測驗`;
 
     showResultMessage(scoreCalc);
@@ -2679,7 +2832,7 @@ function showResults(scoreCorrect) {
         score: scoreCalc,
         correctCount: scoreCorrect,
         wrongCount: wrong,
-        duration: quizStartTime > 0 ? Math.round((Date.now() - quizStartTime) / 1000) : 0,
+        duration: quizDurationSeconds || (quizStartTime > 0 ? Math.round((Date.now() - quizStartTime) / 1000) : 0),
         token: sessionToken,
         ip: clientIP,
         details,
@@ -3722,6 +3875,7 @@ function closeTodayStudentsView() {
 }
 
 function backToTopics() {
+    stopQuizTimer(true);
     hide("result-section");
     hide("flashcard-section");
     hide("flashcard-done-section");
