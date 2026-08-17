@@ -1,4 +1,4 @@
-# 題庫系統 v1.924 佈建說明
+# 題庫系統 v1.925 佈建說明
 
 ## 文件維護規則
 
@@ -15,10 +15,50 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.924
+版本：v1.925
 日期：2026-08-17
-重點：Firebase 成績回寫統一使用 Asia/Taipei，並自動修正既有 UTC ISO 時間。
+重點：新增逐次成績摘要、修正完成度與最高分保存，提供學生歷史與教師即時查詢。
 ```
+
+## v1.925 成績摘要與完成度改造
+
+- 新增 `scoreSummaries/{batchId}`，每次正式作答保存一份不含逐題內容的輕量摘要。
+- `answerBatches/{batchId}` 繼續作為完整逐題原始紀錄；點開明細時才讀取。
+- `studentProgress.topicProgress` 以 `topicId` 保存最高分；`completionTopics` 不再裁掉其他單元成績。
+- 新增 `completion_topic_ids` 設定；舊 `completion_topics` 名稱清單保留相容。
+- 學生端新增歷次成績，每頁 20 筆；所有時間以 `Asia/Taipei` 顯示。
+- 後台新增指定班級最近 100 筆即時監聽，離開頁籤即解除 listener。
+- 後台即時監聽要求 Firebase `admin` Custom Claim，不會開放一般登入者讀取全班資料。
+- 離線補送固定沿用原 `batchId`，避免同一次作答產生重複摘要。
+- 錯題只寫 `students/{studentId}/wrongQuestions` V2，停止頂層舊錯題雙寫。
+
+部署順序：
+
+1. 部署 `firestore.rules` 與 `firestore.indexes.json`，等待索引完成。
+2. 更新 `Code.gs`，再從後台同步題庫與設定，產生 `topicId`、`completionTopicIds`。
+3. 部署 `firebase-config.js`、`firebase-v1685.js`、`index.html`、`admin.html`。
+4. 以預覽模式執行 `node migrate_score_summaries.js --project=PROJECT_ID`。
+5. 核對筆數後加上 `--apply` 回補歷史摘要；工具以 `batchId` 為文件 ID，可安全重跑。
+6. 為教師 Firebase 帳號設定 `admin: true` Custom Claim 後，驗收後台即時成績。
+
+管理員權限工具預設只預覽：
+
+```bash
+node set_admin_claim.js --project=PROJECT_ID --email=teacher@example.com
+node set_admin_claim.js --project=PROJECT_ID --email=teacher@example.com --apply
+```
+
+設定後教師帳號必須登出再登入，Firebase ID token 才會帶入新 claim。
+
+若要同時從歷史成績重建遺失的最高分，請在暫停學生交卷的維護時段執行：
+
+```bash
+node migrate_score_summaries.js --project=PROJECT_ID --apply --rebuild-progress
+```
+
+預設不帶 `--apply` 時永遠只預覽，不會改動正式資料。
+
+注意：本版仍維持 `answerBatches → Google Sheet` 的既有增量同步來源，不在同一版切換 Sheet 資料源。
 
 ## v1.919～v1.922 改造摘要
 

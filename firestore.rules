@@ -5,6 +5,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isAdmin() {
+      return signedIn() && request.auth.token.admin == true;
+    }
+
     function ownsNewDoc() {
       return signedIn()
         && request.resource.data.uid is string
@@ -175,7 +179,26 @@ service cloud.firestore {
     match /answerBatches/{batchId} {
       allow create: if ownsNewDoc() && ownsRegisteredStudent(request.resource.data.studentId);
       allow update: if ownsNewDoc() && ownsExistingDoc() && ownsRegisteredStudent(request.resource.data.studentId);
-      allow read, delete: if false;
+      allow read: if isAdmin()
+        || ownsExistingDoc()
+        || ownsExistingEmailDoc()
+        || ownsRegisteredStudent(resource.data.studentId);
+      allow delete: if false;
+    }
+
+    match /scoreSummaries/{batchId} {
+      allow read: if isAdmin()
+        || ownsExistingDoc()
+        || ownsRegisteredStudent(resource.data.studentId);
+      allow create: if ownsNewDoc()
+        && request.resource.data.batchId == batchId
+        && ownsRegisteredStudent(request.resource.data.studentId);
+      allow update: if ownsNewDoc()
+        && ownsExistingDoc()
+        && request.resource.data.batchId == resource.data.batchId
+        && request.resource.data.studentId == resource.data.studentId
+        && ownsRegisteredStudent(request.resource.data.studentId);
+      allow delete: if false;
     }
 
     match /answerDetails/{detailId} {
@@ -185,7 +208,7 @@ service cloud.firestore {
     }
 
     match /studentProgress/{studentId} {
-      allow read: if ownsRegisteredStudent(studentId) || ownsExistingDoc() || ownsExistingEmailDoc();
+      allow read: if isAdmin() || ownsRegisteredStudent(studentId) || ownsExistingDoc() || ownsExistingEmailDoc();
       allow create, update: if ownsNewDoc()
         && request.resource.data.studentId == studentId
         && ownsRegisteredStudent(studentId);
@@ -199,7 +222,7 @@ service cloud.firestore {
     }
 
     match /studentAttempts/{studentId} {
-      allow read: if signedIn();
+      allow read: if isAdmin() || ownsRegisteredStudent(studentId);
       allow write: if false;
     }
 

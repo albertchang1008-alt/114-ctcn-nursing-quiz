@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js"></script>
-    <script src="firebase-v1685.js"></script>
+    <script src="firebase-config.js?v=1925"></script>
+    <script src="firebase-v1685.js?v=1925"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.924</p>
+                <p class="font-bold text-gray-800">v1.925</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.924 ／ 台北時區成績同步">v1.924</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.925 ／ 即時成績摘要">v1.925</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -619,11 +619,37 @@
             <!-- Tab 切換 -->
             <div class="flex gap-2 mb-6 flex-wrap">
                 <button class="tab-btn active px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('class',event)">🏫 班級總覽</button>
+                <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('live',event)" id="tab-btn-live">⚡ 即時成績</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('question',event)" id="tab-btn-question">📋 題目難度分析 <span id="tab-question-badge" class="hidden text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">需載入</span></button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('topic',event)" id="tab-btn-topic">📚 單元統計 <span id="tab-topic-badge" class="hidden text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full ml-1">需載入</span></button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('analysis',event)" id="tab-btn-analysis">📊 分析快取</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('settings',event)">⚙️ 完成度設定</button>
                 <button class="tab-btn px-5 py-2 rounded-full text-sm font-semibold border border-gray-200 bg-white" onclick="switchTab('dupLogin',event)" id="tab-btn-dupLogin">⚠️ 重複登入</button>
+            </div>
+
+            <!-- v1.925：最近 100 筆即時成績 -->
+            <div id="tab-live" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <div class="flex items-start justify-between gap-4 flex-wrap mb-5">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800">即時成績</h2>
+                        <p class="text-xs text-gray-400 mt-1">只監聽目前班級最近 100 筆摘要；離開此頁會停止監聽。</p>
+                    </div>
+                    <div class="flex gap-2 flex-wrap justify-end">
+                        <button onclick="adminGoogleLogin()" class="border border-sky-200 text-sky-700 bg-sky-50 rounded-lg px-3 py-2 text-sm font-semibold">登入教師 Google 帳號</button>
+                        <select id="live-score-class" onchange="startAdminLiveScores()" class="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="">選擇班級</option>
+                        </select>
+                    </div>
+                </div>
+                <input id="live-score-search" type="search" oninput="renderAdminLiveScores()" placeholder="搜尋學號或姓名…" class="w-full border border-gray-200 rounded-lg px-4 py-2 text-sm mb-4">
+                <div id="live-score-status" class="text-center text-sm text-gray-400 py-8">請先選擇班級</div>
+                <div id="live-score-list" class="space-y-2"></div>
+                <div id="admin-score-detail-modal" class="fixed inset-0 bg-black/50 z-[80] items-center justify-center p-3" style="display:none;">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col">
+                        <div class="flex justify-between items-center px-5 py-4 border-b"><h3 class="font-bold text-gray-800">單次作答明細</h3><button onclick="closeAdminScoreDetail()" class="text-2xl text-gray-400">&times;</button></div>
+                        <div id="admin-score-detail" class="p-5 overflow-y-auto"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Tab 1：班級總覽 -->
@@ -1046,7 +1072,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.924";
+    document.title = "教師後台 - 題庫系統 v1.925";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
@@ -2772,6 +2798,7 @@ function openTeacherPortal() {
     loadTeacherData();
 }
 function closeTeacherPortal() {
+    stopAdminLiveScores();
     document.getElementById("teacher-portal").style.display = "none";
     document.body.style.overflow = "";
     loggedInAdminName = "";
@@ -2782,6 +2809,7 @@ async function loadTeacherData() {
     detailStatsLoading = false;
     try {
         let res = null;
+        let loadedFromFirebase = false;
         if (window.Firebase1685 && window.Firebase1685.isEnabled()) {
             try {
                 await window.Firebase1685.ensureSignedIn();
@@ -2790,6 +2818,7 @@ async function loadTeacherData() {
                 if (docSnap.exists) {
                     res = docSnap.data();
                     res.status = "ok";
+                    loadedFromFirebase = true;
                 }
             } catch (firebaseErr) {
                 console.warn("後台未使用 Firebase Google Auth，改用 GAS 後台通道讀取：", firebaseErr);
@@ -2799,14 +2828,44 @@ async function loadTeacherData() {
         if (!res) {
             res = await postGAS({ action: "getTeacherData" });
         }
+        // Firebase 快取提供分析；Google Sheet 的設定與完整學生名單仍由 GAS 權威補入。
+        if (loadedFromFirebase || !res.completionSettings || !Array.isArray(res.topics) || !Object.keys(res.studentInfoMap || {}).length) {
+            const settingsRes = await postGAS({ action: "getTeacherData" });
+            res.completionSettings = settingsRes.completionSettings || res.completionSettings || completionSettings;
+            res.topics = settingsRes.topics || res.topics || [];
+            res.allClassList = settingsRes.allClassList || settingsRes.classList || res.allClassList || res.classList || [];
+            res.studentInfoMap = { ...(settingsRes.studentInfoMap || {}), ...(res.studentInfoMap || {}) };
+            res.studentHistory = { ...(settingsRes.studentHistory || {}), ...(res.studentHistory || {}) };
+            const classMap = new Map();
+            [...(settingsRes.classList || []), ...(res.classList || [])].forEach(item => {
+                const normalized = typeof item === "string"
+                    ? { class: item, studentCount: 0, total: 0, correct: 0, rate: 0, topicBreakdown: [] }
+                    : { ...item };
+                const name = normalized.class || normalized.className || normalized.name;
+                if (!name) return;
+                const previous = classMap.get(name) || {};
+                classMap.set(name, {
+                    ...previous,
+                    ...normalized,
+                    class: name,
+                    studentCount: Math.max(Number(previous.studentCount || 0), Number(normalized.studentCount || 0)),
+                    topicBreakdown: normalized.topicBreakdown || previous.topicBreakdown || []
+                });
+            });
+            res.classList = [...classMap.values()];
+        }
         
         if (res.status !== "ok") throw new Error(res.message || "讀取失敗");
         teacherData = res;
+        completionSettings = res.completionSettings || completionSettings;
+        topicsData = res.topics || topicsData;
+        allClassList = res.allClassList || res.classList || allClassList;
         teacherData.questionStats       = teacherData.questionStats       || [];
         teacherData.topicStats          = teacherData.topicStats          || [];
         teacherData.studentWrongDetails = teacherData.studentWrongDetails || {};
         hide("teacher-loading");
         renderTeacherDashboard(res);
+        prepareAdminLiveScoreClasses();
         show("teacher-content");
         ["tab-question-badge","tab-topic-badge"].forEach(id => {
             const el = document.getElementById(id);
@@ -3364,28 +3423,54 @@ function renderSettingsTab(currentSettings) {
 
     // ── 分類勾選：依題庫順序（topicsData）──
     // 先取題庫順序，再補入有作答但不在題庫的分類
-    const topicsFromDB  = topicsData.map(t => t.name);
-    const topicsFromStats = (teacherData?.topicStats?.map(t => t.topic) ||
-                             teacherData?.questionStats?.map(q => q.topic).filter((v,i,a)=>a.indexOf(v)===i) ||
-                             []).filter(t => !topicsFromDB.includes(t));
-    const allTopics = [...topicsFromDB, ...topicsFromStats];
+    const topicNameOf = value => String(
+        typeof value === "string"
+            ? value
+            : (value?.name || value?.topic || value?.top || value?.chapterName || "")
+    ).trim();
+    const topicEntryMap = new Map();
+    topicsData.forEach(value => {
+        const name = topicNameOf(value);
+        if (!name) return;
+        topicEntryMap.set(name, {
+            name,
+            topicId: typeof value === "object" ? String(value?.topicId || "").trim() : ""
+        });
+    });
+    [...(teacherData?.topicStats || []), ...(teacherData?.questionStats || [])].forEach(value => {
+        const name = topicNameOf(value);
+        if (name && !topicEntryMap.has(name)) topicEntryMap.set(name, { name, topicId: "" });
+    });
+    const allTopics = [...topicEntryMap.values()];
     const checkedTopics = new Set(currentSettings?.completionTopics || []);
+    const checkedTopicIds = new Set(currentSettings?.completionTopicIds || []);
     document.getElementById("settings-topic-list").innerHTML = allTopics.length === 0
         ? '<p class="text-gray-400 text-sm col-span-2">請先載入分析數據（切換至其他 Tab 後再回來）</p>'
         : allTopics.map(topic => `
             <label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer">
                 <input type="checkbox" class="settings-topic-cb w-4 h-4 rounded accent-sky-500"
-                    value="${topic}" ${checkedTopics.has(topic) ? "checked" : ""}>
-                <span class="text-sm text-gray-700">${topic}</span>
+                    value="${topic.name}" data-topic-id="${topic.topicId}"
+                    ${checkedTopicIds.has(topic.topicId) || checkedTopics.has(topic.name) ? "checked" : ""}>
+                <span class="text-sm text-gray-700">${topic.name}</span>
             </label>`).join("");
 
     // ── 班級勾選 ──
     const checkedClasses = new Set(currentSettings?.completionClasses || []);
+    const classNameOf = value => String(
+        typeof value === "string"
+            ? value
+            : (value?.className || value?.class || value?.name || "")
+    ).trim();
+    const availableClasses = [...new Set([
+        ...allClassList.map(classNameOf),
+        ...(teacherData?.classList || []).map(classNameOf),
+        ...Object.values(teacherData?.studentInfoMap || {}).map(classNameOf)
+    ].filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-TW", { numeric: true }));
     const classContainer = document.getElementById("settings-class-list");
     if (classContainer) {
-        classContainer.innerHTML = allClassList.length === 0
+        classContainer.innerHTML = availableClasses.length === 0
             ? '<p class="text-gray-400 text-sm col-span-2">尚未讀取到班級資料</p>'
-            : allClassList.map(cls => `
+            : availableClasses.map(cls => `
                 <label class="flex items-center gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50 cursor-pointer">
                     <input type="checkbox" class="settings-class-cb w-4 h-4 rounded accent-purple-500"
                         value="${cls}" ${checkedClasses.size === 0 || checkedClasses.has(cls) ? "checked" : ""}>
@@ -3410,6 +3495,7 @@ async function saveCompletionSettings() {
         body: document.getElementById(`settings-login-card-${n}-body`).value.trim()
     }));
     const topics    = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.value);
+    const topicIds  = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.dataset.topicId).filter(Boolean);
     const classes   = [...document.querySelectorAll(".settings-class-cb:checked")].map(cb => cb.value);
     const emailDomainRestrictionEnabled = !!document.getElementById("settings-email-restrict-enabled")?.checked;
     const allowedEmailDomains = String(document.getElementById("settings-allowed-domains")?.value || "")
@@ -3425,6 +3511,7 @@ async function saveCompletionSettings() {
             action: "saveSettings",
             passScore,
             completionTopics: topics,
+            completionTopicIds: topicIds,
             completionClasses: classes,
             emailDomainRestrictionEnabled,
             allowedEmailDomains,
@@ -3547,6 +3634,152 @@ async function rebuildStudentProgressFirebase() {
     status.classList.remove("hidden");
 }
 
+// ── v1.925 即時成績 ───────────────────────────
+let adminLiveScoreUnsubscribe = null;
+const adminLiveScoreMap = new Map();
+
+function escapeAdminScore(value) {
+    return String(value ?? "").replace(/[&<>"']/g, ch => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+    }[ch]));
+}
+
+function fmtTaipeiAdmin(value) {
+    if (!value) return "—";
+    const date = typeof value.toDate === "function" ? value.toDate() : new Date(value);
+    if (Number.isNaN(date.getTime())) return "—";
+    return new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false
+    }).format(date);
+}
+
+function stopAdminLiveScores() {
+    if (adminLiveScoreUnsubscribe) adminLiveScoreUnsubscribe();
+    adminLiveScoreUnsubscribe = null;
+}
+
+async function adminGoogleLogin() {
+    const status = document.getElementById("live-score-status");
+    try {
+        status.textContent = "正在登入教師 Google 帳號…";
+        status.classList.remove("hidden");
+        await window.Firebase1685.startGoogleLogin();
+        status.textContent = "Google 帳號登入成功，正在檢查管理員權限…";
+        if (document.getElementById("live-score-class")?.value) await startAdminLiveScores();
+    } catch (err) {
+        status.textContent = "教師 Google 登入失敗：" + (err.message || "請稍後再試");
+    }
+}
+
+function prepareAdminLiveScoreClasses() {
+    const select = document.getElementById("live-score-class");
+    if (!select) return;
+    const previous = select.value;
+    const names = [...new Set([
+        ...allClassList.map(v => typeof v === "string" ? v : (v?.className || v?.class || v?.name || "")),
+        ...(teacherData?.classList || []).map(v => v?.className || v?.class || v?.name || ""),
+        ...Object.values(teacherData?.studentInfoMap || {}).map(v => v?.className || v?.class || "")
+    ].map(v => String(v || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-TW", { numeric: true }));
+    select.innerHTML = '<option value="">選擇班級</option>' + names.map(name => `<option value="${escapeAdminScore(name)}">${escapeAdminScore(name)}</option>`).join("");
+    if (names.includes(previous)) select.value = previous;
+}
+
+async function startAdminLiveScores() {
+    stopAdminLiveScores();
+    adminLiveScoreMap.clear();
+    renderAdminLiveScores();
+    const className = document.getElementById("live-score-class")?.value || "";
+    const status = document.getElementById("live-score-status");
+    if (!className) {
+        status.textContent = "請先選擇班級";
+        status.classList.remove("hidden");
+        return;
+    }
+    status.textContent = "正在建立安全的即時監聽…";
+    status.classList.remove("hidden");
+    try {
+        const user = await window.Firebase1685.ensureSignedIn();
+        const token = await user.getIdTokenResult(true);
+        if (token?.claims?.admin !== true) {
+            throw new Error("目前 Firebase 帳號沒有 admin Custom Claim，為保護學生成績已拒絕全班監聽。");
+        }
+        const db = firebase.firestore();
+        const coll = window.FIREBASE_V18_CONFIG?.collections?.scoreSummaries || "scoreSummaries";
+        adminLiveScoreUnsubscribe = db.collection(coll)
+            .where("className", "==", className)
+            .orderBy("answeredAt", "desc")
+            .limit(100)
+            .onSnapshot(snapshot => {
+                snapshot.docChanges().forEach(change => {
+                    if (change.type === "removed") adminLiveScoreMap.delete(change.doc.id);
+                    else adminLiveScoreMap.set(change.doc.id, { id: change.doc.id, ...change.doc.data() });
+                });
+                renderAdminLiveScores();
+            }, err => {
+                status.textContent = "即時監聽失敗：" + err.message;
+                status.classList.remove("hidden");
+            });
+    } catch (err) {
+        status.textContent = err.message || "無法建立即時監聽";
+        status.classList.remove("hidden");
+    }
+}
+
+function adminScoreMillis(item) {
+    const value = item.answeredAt || item.clientAnsweredAt;
+    if (!value) return 0;
+    if (typeof value.toMillis === "function") return value.toMillis();
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function renderAdminLiveScores() {
+    const list = document.getElementById("live-score-list");
+    const status = document.getElementById("live-score-status");
+    if (!list || !status) return;
+    const keyword = String(document.getElementById("live-score-search")?.value || "").trim().toLowerCase();
+    const rows = [...adminLiveScoreMap.values()]
+        .filter(item => !keyword || `${item.studentId || ""} ${item.name || ""}`.toLowerCase().includes(keyword))
+        .sort((a, b) => adminScoreMillis(b) - adminScoreMillis(a));
+    status.classList.toggle("hidden", rows.length > 0);
+    if (!rows.length && adminLiveScoreMap.size) status.textContent = "沒有符合搜尋條件的成績";
+    else if (!rows.length && document.getElementById("live-score-class")?.value && adminLiveScoreUnsubscribe) status.textContent = "此班級尚無摘要資料";
+    list.innerHTML = rows.map(item => `
+        <button type="button" onclick="openAdminScoreDetail('${escapeAdminScore(item.batchId || item.id)}')" class="w-full text-left border border-gray-100 rounded-xl px-4 py-3 hover:border-sky-200 hover:bg-sky-50/40 transition">
+            <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="font-bold text-gray-800">${escapeAdminScore(item.name || "—")} <span class="text-xs font-normal text-gray-400">${escapeAdminScore(item.studentId || "")}</span></p>
+                    <p class="text-xs text-gray-500 mt-1 truncate">${escapeAdminScore(item.topicDisplayName || item.topicName || "未分類")} · ${escapeAdminScore(item.mode || "正式測驗")}</p>
+                    <p class="text-xs text-gray-400 mt-1">${fmtTaipeiAdmin(item.answeredAt || item.clientAnsweredAt)} · ${Number(item.correctCount || 0)}/${Number(item.questionCount || 0)} 題 · ${Number(item.duration || 0)} 秒</p>
+                </div>
+                <span class="text-3xl font-black ${Number(item.score || 0) >= 80 ? "text-green-500" : Number(item.score || 0) >= 60 ? "text-amber-500" : "text-rose-500"}">${Number(item.score || 0)}</span>
+            </div>
+        </button>`).join("");
+}
+
+async function openAdminScoreDetail(batchId) {
+    const modal = document.getElementById("admin-score-detail-modal");
+    const detail = document.getElementById("admin-score-detail");
+    modal.style.display = "flex";
+    detail.innerHTML = '<p class="text-center text-sm text-gray-400 py-10">讀取逐題明細中…</p>';
+    try {
+        const coll = window.FIREBASE_V18_CONFIG?.collections?.answerBatches || "answerBatches";
+        const snap = await firebase.firestore().collection(coll).doc(batchId).get();
+        if (!snap.exists) throw new Error("找不到完整成績");
+        const batch = snap.data() || {};
+        let rows = [];
+        try { rows = JSON.parse(batch.detailsJson || "[]"); } catch (err) { rows = []; }
+        detail.innerHTML = `<div class="mb-4"><p class="font-bold text-gray-800">${escapeAdminScore(batch.name)}（${escapeAdminScore(batch.studentId)}）</p><p class="text-sm text-gray-500">${escapeAdminScore(batch.topic)} · ${fmtTaipeiAdmin(batch.clientCreatedAt || batch.createdAt)} · ${Number(batch.score || 0)} 分</p></div><div class="space-y-3">${rows.map((row, index) => `<div class="border rounded-xl p-3 ${row.isCorrect ? "border-green-100" : "border-rose-100"}"><div class="flex justify-between gap-3"><p class="text-sm font-bold">第 ${index + 1} 題 ${row.isCorrect ? "✅" : "❌"}</p><span class="text-xs text-sky-700">${row.answerSec == null ? "未記錄" : Number(row.answerSec) + " 秒"}</span></div><p class="text-sm text-gray-700 mt-2">${escapeAdminScore(row.questionText || "")}</p><p class="text-xs text-rose-600 mt-2">學生：${escapeAdminScore(row.selectedText || "未作答")}</p><p class="text-xs text-green-700 mt-1">正確：${escapeAdminScore(row.correctText || "—")}</p></div>`).join("")}</div>`;
+    } catch (err) {
+        detail.innerHTML = `<p class="text-center text-rose-500 py-10">${escapeAdminScore(err.message || "讀取失敗")}</p>`;
+    }
+}
+
+function closeAdminScoreDetail() {
+    document.getElementById("admin-score-detail-modal").style.display = "none";
+}
+
 let detailStatsLoaded  = false;
 let detailStatsLoading = false;
 let analysisCacheLoaded = false;
@@ -3559,6 +3792,12 @@ async function switchTab(tab, event) {
     document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
     event.currentTarget.classList.add("active");
     document.getElementById("tab-"+tab).classList.add("active");
+    if (tab === "live") {
+        prepareAdminLiveScoreClasses();
+        if (document.getElementById("live-score-class")?.value) startAdminLiveScores();
+    } else {
+        stopAdminLiveScores();
+    }
     if (tab === "settings") renderSettingsTab(completionSettings);
     if (tab === "dupLogin" && !dupLoginLoaded) loadDupLoginReport();
     if (tab === "analysis" && !analysisCacheLoaded && !analysisCacheLoading) loadAnalysisCache(false);

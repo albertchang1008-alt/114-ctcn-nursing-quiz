@@ -473,3 +473,25 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 增量 cursor 繼續保存 UTC ISO，避免改變查詢排序與重疊去重邏輯。
 - Sheet 寫入改用 Date，試算表時區固定為 `Asia/Taipei`，顯示格式為 `yyyy/mm/dd hh:mm:ss`。
 - 同步時自動轉換既有含 `Z` 或 offset 的 ISO 時間字串，並保留公式與既有本地格式。
+# v1.925 - 2026-08-17
+
+## 成績資料層
+
+- 新增 `scoreSummaries/{batchId}` 輕量逐次摘要，與完整 `answerBatches` 同批寫入。
+- 修正 `getTeacherData` 將 Google Sheet 學生名單回傳為空物件的問題；未作答學生現在也會出現在後台班級名單。
+- 學生名單同時有「修課班級」與「班級」時優先採用修課班級，並排除 teacher/admin 角色進入學生同步。
+- 離線佇列預先產生並保留 `batchId`，避免重送重複紀錄。
+- 新增學生歷史分頁、逐題時間明細及後台最近 100 筆即時監聽。
+
+## 完成度
+
+- 題庫同步新增穩定 `topicId` 與 `courseId`。
+- 新增 `completionTopicIds`，並保留名稱設定相容。
+- 修正完成度清單裁掉其他單元最高分，以及完成度分子計入非指定單元的問題。
+- 修正後台設定頁題目來源為字串時顯示 `undefined`，並合併多個班級資料來源。
+
+## 安全與部署
+
+- 學生只能讀自己的摘要與完整作答；教師全班監聽要求 `admin` Custom Claim。
+- `studentAttempts` 不再允許任意已登入使用者讀取。
+- 新增摘要查詢複合索引與預設 dry-run 的歷史回補工具。

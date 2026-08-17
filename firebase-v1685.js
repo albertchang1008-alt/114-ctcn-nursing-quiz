@@ -12,6 +12,31 @@
   var queueKey = "quiz_v169_firebase_queue";
   var redirectPendingKey = "quiz_v19_google_redirect_pending";
 
+  function stableHashText(value) {
+    var text = String(value || "");
+    var hash = 2166136261;
+    for (var i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+  }
+
+  function newBatchId() {
+    return "B_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+  }
+
+  function stableTopicId(value, fallbackTopic) {
+    var source = value || {};
+    if (source.topicId) return String(source.topicId);
+    var courseId = String(source.courseId || source.questionBankVersion || "default").trim();
+    var subjectId = String(source.subjectId || "subject").trim();
+    var chapterId = String(source.chapterId || "").trim();
+    var category = String(source.category || source.chapterName || fallbackTopic || source.topic || "未分類").trim();
+    var stablePart = chapterId || category;
+    return "topic_" + stableHashText([courseId, subjectId, stablePart].join("|"));
+  }
+
   function enabled() {
     var c = cfg.firebaseConfig || {};
     return !!(cfg.enabled && window.firebase && c.apiKey && c.projectId && c.authDomain && c.appId);
@@ -63,6 +88,10 @@
       top: q.top || q.category || "未分類",
       subjectId: q.subjectId || "",
       subjectName: q.subjectName || q.subject || "",
+      courseId: q.courseId || "",
+      topicId: q.topicId || stableTopicId(q, q.top || q.category),
+      year: q.year || "",
+      term: q.term || "",
       chapterId: q.chapterId || "",
       chapterName: q.chapterName || q.chapter || "",
       q: q.q || q.text || q.question || "",
@@ -106,6 +135,8 @@
         name: name,
         color: q.color || "red",
         count: 0,
+        courseId: q.courseId || "",
+        topicId: q.topicId || stableTopicId(q, name),
         subjectId: q.subjectId || "",
         subjectName: q.subjectName || q.subject || "",
         chapterId: q.chapterId || "",
@@ -135,7 +166,7 @@
     publicConfigCache = snap.exists ? (snap.data() || {}) : {
       title: "動態題庫測驗",
       titleColor: "sky",
-      version: "v1.924"
+      version: "v1.925"
     };
     return publicConfigCache;
   }
@@ -241,14 +272,14 @@
     try {
       settings = await loadAuthenticatedSettings();
     } catch (err) {
-      console.warn("[v1.924] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.925] Firebase 設定讀取失敗，略過：", err);
     }
     var questions = [];
     var bundle = null;
     var chapterMode = settings.questionLoadMode === "chapterBundle" && settings.activeQuestionBankPath;
     if (!chapterMode && cfg.allowLegacyQuestionFallback) {
       try { bundle = await loadQuestionBundle(settings); } catch (err) {
-        console.warn("[v1.924] 舊題庫 bundle 讀取失敗：", err);
+        console.warn("[v1.925] 舊題庫 bundle 讀取失敗：", err);
       }
       questions = bundle ? bundle.questions : await loadQuestionsFallback(settings);
     }
@@ -464,7 +495,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.924"
+      source: "self-register-v1.925"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -511,7 +542,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.924"
+      source: "firebase-v1.925"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -559,23 +590,37 @@
   async function resolveCompletionSettings(payload) {
     var passScore = Number(payload.passScore || payload.completionPassScore || 0);
     var completionTopics = Array.isArray(payload.completionTopics) ? payload.completionTopics.slice() : [];
-    if (passScore && completionTopics.length) return { passScore: passScore, completionTopics: completionTopics };
+    var completionTopicIds = Array.isArray(payload.completionTopicIds) ? payload.completionTopicIds.slice() : [];
+    if (passScore && (completionTopics.length || completionTopicIds.length)) {
+      return { passScore: passScore, completionTopics: completionTopics, completionTopicIds: completionTopicIds };
+    }
     try {
       var bootData = await loadBootstrap();
       var settings = (bootData && bootData.completionSettings) || {};
       if (!passScore) passScore = Number(settings.passScore || 80);
       if (!completionTopics.length && Array.isArray(settings.completionTopics)) completionTopics = settings.completionTopics.slice();
+      if (!completionTopicIds.length && Array.isArray(settings.completionTopicIds)) completionTopicIds = settings.completionTopicIds.slice();
     } catch (err) {
       // 作答寫入不應因為設定讀取失敗而中斷。
     }
-    return { passScore: passScore || 80, completionTopics: completionTopics };
+    return { passScore: passScore || 80, completionTopics: completionTopics, completionTopicIds: completionTopicIds };
   }
 
   function summarizeCurrentAttemptByTopic(batch, details) {
     var groups = {};
     details.forEach(function(d) {
       var topic = d.topic || batch.topic || "未分類";
-      if (!groups[topic]) groups[topic] = { topic: topic, correct: 0, total: 0, totalSec: 0, secCount: 0 };
+      if (!groups[topic]) groups[topic] = {
+        topic: topic,
+        topicId: stableTopicId(d, topic),
+        topicName: d.chapterName || d.category || topic,
+        courseId: d.courseId || "",
+        subjectId: d.subjectId || "",
+        correct: 0,
+        total: 0,
+        totalSec: 0,
+        secCount: 0
+      };
       groups[topic].total += 1;
       if (d.isCorrect) groups[topic].correct += 1;
       if (d.answerSec !== null && d.answerSec !== undefined && !isNaN(Number(d.answerSec))) {
@@ -585,7 +630,17 @@
     });
 
     if (batch.topic && batch.topic !== "綜合練習") {
-      if (!groups[batch.topic]) groups[batch.topic] = { topic: batch.topic, correct: batch.correctCount, total: batch.correctCount + batch.wrongCount, totalSec: 0, secCount: 0 };
+      if (!groups[batch.topic]) groups[batch.topic] = {
+        topic: batch.topic,
+        topicId: stableTopicId(batch, batch.topic),
+        topicName: batch.topic,
+        courseId: batch.courseId || "",
+        subjectId: batch.subjectId || "",
+        correct: batch.correctCount,
+        total: batch.correctCount + batch.wrongCount,
+        totalSec: 0,
+        secCount: 0
+      };
       groups[batch.topic].score = batch.score;
       if (batch.duration && (batch.correctCount + batch.wrongCount) > 0) {
         groups[batch.topic].avgSec = Math.round(batch.duration / (batch.correctCount + batch.wrongCount));
@@ -596,59 +651,106 @@
       var g = groups[topic];
       var score = g.score !== undefined ? Number(g.score) : (g.total > 0 ? Math.round((g.correct / g.total) * 100) : 0);
       var avgSec = g.avgSec !== undefined ? g.avgSec : (g.secCount > 0 ? Math.round(g.totalSec / g.secCount) : null);
-      return { topic: topic, score: score, avgSec: avgSec };
+      return {
+        topic: topic,
+        topicId: g.topicId || stableTopicId(g, topic),
+        topicName: g.topicName || topic,
+        courseId: g.courseId || "",
+        subjectId: g.subjectId || "",
+        score: score,
+        avgSec: avgSec
+      };
     });
   }
 
   function mergeStudentProgress(existing, batch, settings, attemptSummaries) {
     var current = existing || {};
     var detailMap = {};
+    var topicProgress = Object.assign({}, current.topicProgress || {});
     (Array.isArray(current.details) ? current.details : []).forEach(function(d) {
-      if (d && d.topic) detailMap[d.topic] = {
+      if (!d || !d.topic) return;
+      var legacyId = d.topicId || stableTopicId(d, d.topic);
+      detailMap[d.topic] = {
         topic: d.topic,
+        topicId: legacyId,
+        topicName: d.topicName || d.topic,
         best: d.best === undefined ? null : d.best,
         passed: !!d.passed,
         avgSec: d.avgSec === undefined ? null : d.avgSec,
         lastScore: d.lastScore === undefined ? null : d.lastScore,
         lastAnsweredAtText: d.lastAnsweredAtText || ""
       };
+      if (!topicProgress[legacyId]) topicProgress[legacyId] = Object.assign({}, detailMap[d.topic]);
     });
 
     var completionTopics = settings.completionTopics || [];
+    var completionTopicIds = settings.completionTopicIds || [];
     completionTopics.forEach(function(topic) {
-      if (!detailMap[topic]) detailMap[topic] = { topic: topic, best: null, passed: false, avgSec: null, lastScore: null, lastAnsweredAtText: "" };
+      if (!detailMap[topic]) detailMap[topic] = {
+        topic: topic,
+        topicId: "",
+        topicName: topic,
+        best: null,
+        passed: false,
+        avgSec: null,
+        lastScore: null,
+        lastAnsweredAtText: ""
+      };
     });
 
     attemptSummaries.forEach(function(s) {
       if (!s.topic || s.topic === "綜合練習") return;
       if (!detailMap[s.topic]) {
-        detailMap[s.topic] = { topic: s.topic, best: null, passed: false, avgSec: null, lastScore: null, lastAnsweredAtText: "" };
+        detailMap[s.topic] = { topic: s.topic, topicId: s.topicId, topicName: s.topicName || s.topic, best: null, passed: false, avgSec: null, lastScore: null, lastAnsweredAtText: "" };
       }
       var d = detailMap[s.topic];
+      var oldProgress = topicProgress[s.topicId] || {};
+      var previousBest = oldProgress.best !== undefined && oldProgress.best !== null ? oldProgress.best : d.best;
+      d.topicId = s.topicId;
+      d.topicName = s.topicName || d.topicName || s.topic;
       d.lastScore = s.score;
-      d.best = d.best === null || d.best === undefined ? s.score : Math.max(Number(d.best) || 0, s.score);
+      d.best = previousBest === null || previousBest === undefined ? s.score : Math.max(Number(previousBest) || 0, s.score);
       d.passed = (Number(d.best) || 0) >= settings.passScore;
       if (s.avgSec !== null && s.avgSec !== undefined) d.avgSec = s.avgSec;
-      d.lastAnsweredAtText = new Date().toISOString();
+      d.lastAnsweredAtText = batch.clientCreatedAt || new Date().toISOString();
+      topicProgress[s.topicId] = {
+        topicId: s.topicId,
+        topic: s.topic,
+        topicName: s.topicName || s.topic,
+        courseId: s.courseId || "",
+        subjectId: s.subjectId || "",
+        best: d.best,
+        lastScore: s.score,
+        passed: d.passed,
+        avgSec: d.avgSec,
+        lastBatchId: batch.batchId,
+        lastAnsweredAt: nowField(),
+        lastAnsweredAtText: d.lastAnsweredAtText
+      };
     });
 
-    var orderedTopics = completionTopics.length ? completionTopics : Object.keys(detailMap).sort(function(a, b) { return a.localeCompare(b, "zh-TW"); });
+    // 完成度設定只控制統計範圍，不得再裁掉學生其他單元的歷史最高分。
+    var orderedTopics = completionTopics.concat(Object.keys(detailMap).filter(function(topic) {
+      return completionTopics.indexOf(topic) === -1;
+    }).sort(function(a, b) { return a.localeCompare(b, "zh-TW"); }));
     var details = orderedTopics.map(function(topic) {
-      return detailMap[topic] || { topic: topic, best: null, passed: false, avgSec: null, lastScore: null, lastAnsweredAtText: "" };
+      return detailMap[topic] || { topic: topic, topicId: "", topicName: topic, best: null, passed: false, avgSec: null, lastScore: null, lastAnsweredAtText: "" };
     });
 
     return {
       studentId: batch.studentId,
       name: batch.name,
       passScore: settings.passScore,
-      completionTopics: orderedTopics,
+      completionTopics: completionTopics,
+      completionTopicIds: completionTopicIds,
       details: details,
+      topicProgress: topicProgress,
       lastBatchId: batch.batchId,
       lastTopic: batch.topic,
       lastScore: batch.score,
       updatedAt: nowField(),
-      updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.924-progress"
+      updatedAtText: batch.clientCreatedAt || new Date().toISOString(),
+      source: "firebase-v1.925-progress"
     };
   }
 
@@ -659,6 +761,16 @@
       if (qid) attempted[String(qid)] = true;
     });
     return attempted;
+  }
+
+  function mergeProcessedBatchIds(existing, batchId, clientCreatedAt) {
+    var processed = Object.assign({}, (existing && existing.processedBatchIds) || {});
+    processed[batchId] = clientCreatedAt || new Date().toISOString();
+    var keys = Object.keys(processed).sort(function(a, b) {
+      return String(processed[b] || "").localeCompare(String(processed[a] || ""));
+    });
+    keys.slice(200).forEach(function(key) { delete processed[key]; });
+    return processed;
   }
 
   function mergeActiveWrongQuestions(existing, details) {
@@ -680,12 +792,53 @@
     return { active: active, times: times };
   }
 
+  function buildScoreSummary(batch, details) {
+    var first = details[0] || {};
+    var topicId = batch.topic === "綜合練習"
+      ? "topic_comprehensive"
+      : stableTopicId(first, batch.topic);
+    var questionCount = Number(batch.correctCount || 0) + Number(batch.wrongCount || 0);
+    var clientDate = new Date(batch.clientCreatedAt || "");
+    var answeredAt = isNaN(clientDate.getTime())
+      ? nowField()
+      : window.firebase.firestore.Timestamp.fromDate(clientDate);
+    return {
+      batchId: batch.batchId,
+      uid: batch.uid,
+      studentId: batch.studentId,
+      name: batch.name,
+      className: batch.className,
+      campus: batch.campus,
+      courseId: first.courseId || batch.courseId || "",
+      subjectId: first.subjectId || batch.subjectId || "",
+      subjectName: first.subjectName || batch.subjectName || "",
+      topicId: topicId,
+      topicName: first.chapterName || first.category || batch.topic,
+      topicDisplayName: batch.topic,
+      mode: batch.mode,
+      isRetryMode: batch.isRetryMode,
+      countsTowardBest: !batch.isRetryMode,
+      countsTowardCompletion: !batch.isRetryMode,
+      attempt: batch.attempt,
+      score: batch.score,
+      correctCount: batch.correctCount,
+      wrongCount: batch.wrongCount,
+      questionCount: questionCount,
+      duration: batch.duration,
+      avgAnswerSec: questionCount > 0 && batch.duration > 0 ? Math.round(batch.duration / questionCount) : null,
+      answeredAt: answeredAt,
+      submittedAt: nowField(),
+      clientAnsweredAt: batch.clientCreatedAt,
+      source: "firebase-v1.925-summary"
+    };
+  }
+
   async function submitAttempt(payload) {
     if (!init()) throw new Error("Firebase 尚未啟用");
     var user = await ensureSignedIn();
     await assertActiveSession(payload.studentId, payload.token);
     var c = cfg.collections || {};
-    var batchId = payload.batchId || ("B_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8));
+    var batchId = payload.batchId || newBatchId();
     var userInfo = currentUserInfo();
     var email = normalizeEmail(payload.email || userInfo.email || currentUserEmail());
     var details = Array.isArray(payload.details) ? payload.details : [];
@@ -712,14 +865,16 @@
       questionBankVersion: payload.questionBankVersion || "",
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
-      clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.924",
+      clientCreatedAt: payload.clientCreatedAt || new Date().toISOString(),
+      source: "firebase-v1.925",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
           questionFirebaseId: d.questionFirebaseId || d.firebaseQuestionId || d.questionId || ("Q_" + idx),
           questionText: d.questionText || "",
           topic: d.topic || "",
+          topicId: d.topicId || stableTopicId(d, d.topic || payload.topic),
+          courseId: d.courseId || "",
           subjectId: d.subjectId || "",
           subjectName: d.subjectName || "",
           chapterId: d.chapterId || "",
@@ -745,71 +900,29 @@
       }))
     };
     
-    var writer = db.batch();
-    var opCount = 0;
-    
-    writer.set(db.collection(c.answerBatches || "answerBatches").doc(batchId), batch, { merge: true });
-    opCount++;
-    
-    for (var idx = 0; idx < details.length; idx++) {
-      var d = details[idx];
-      var qid = d.questionId || ("Q_" + idx);
-      var firebaseQid = d.questionFirebaseId || d.firebaseQuestionId || qid;
-      var progressId = safeDocId(batch.studentId + "_" + firebaseQid);
-      var wrongId = progressId;
-      
-      if (!d.isCorrect) {
-        writer.set(db.collection(c.wrongQuestions || "wrongQuestions").doc(wrongId), {
-          uid: batch.uid,
-          studentId: batch.studentId,
-          name: batch.name,
-          email: email,
-          questionId: qid,
-          questionFirebaseId: firebaseQid,
-          questionText: d.questionText || "",
-          topic: d.topic || "",
-          subjectId: d.subjectId || "",
-          subjectName: d.subjectName || "",
-          chapterId: d.chapterId || "",
-          chapterName: d.chapterName || "",
-          category: d.category || "",
-          subCategory: d.subCategory || "",
-          difficulty: d.difficulty || "",
-          importance: d.importance || "",
-          cogType: d.cogType || "",
-          lectureTitle: d.lectureTitle || "",
-          lectureUrl: d.lectureUrl || "",
-          correctText: d.correctText || "",
-          selectedText: d.selectedText || "",
-          lastWrongAt: nowField(),
-          clientCreatedAt: new Date().toISOString(),
-          lastBatchId: batchId,
-          active: true,
-          source: "firebase-v1.924"
-        }, { merge: true });
+    var answerRef = db.collection(c.answerBatches || "answerBatches").doc(batchId);
+    var summaryRef = db.collection(c.scoreSummaries || "scoreSummaries").doc(batchId);
+    var progressRef = batch.studentId ? db.collection(c.studentProgress || "studentProgress").doc(batch.studentId) : null;
+    var settings = !batch.isRetryMode && batch.studentId ? await resolveCompletionSettings(payload) : null;
+    var attemptSummaries = !batch.isRetryMode ? summarizeCurrentAttemptByTopic(batch, details) : [];
+
+    var transactionResult = await db.runTransaction(async function(writer) {
+      // 所有讀取必須在 transaction 寫入前完成；batchId 也作為離線補送的冪等鍵。
+      var progressSnap = progressRef ? await writer.get(progressRef) : null;
+      var existingProgress = progressSnap && progressSnap.exists ? (progressSnap.data() || {}) : {};
+      if ((existingProgress.processedBatchIds || {})[batchId]) return { duplicate: true };
+      var opCount = 0;
+      writer.set(answerRef, batch, { merge: true });
+      opCount++;
+
+      if (!batch.isRetryMode) {
+        writer.set(summaryRef, buildScoreSummary(batch, details), { merge: true });
         opCount++;
       }
-      
-      if (opCount >= 400) {
-        await writer.commit();
-        writer = db.batch();
-        opCount = 0;
-      }
-    }
 
-    if (batch.studentId) {
-      var progressRef = db.collection(c.studentProgress || "studentProgress").doc(batch.studentId);
-      var existingProgress = {};
-      try {
-        var progressSnap = await progressRef.get();
-        if (progressSnap.exists) existingProgress = progressSnap.data() || {};
-      } catch (err) {
-        // 沒讀到舊摘要時，仍可用本次成績建立新摘要。
-      }
+      if (batch.studentId) {
       var progressDoc;
       if (!batch.isRetryMode) {
-        var settings = await resolveCompletionSettings(payload);
-        var attemptSummaries = summarizeCurrentAttemptByTopic(batch, details);
         progressDoc = mergeStudentProgress(existingProgress, batch, settings, attemptSummaries);
         progressDoc.attemptedQuestions = mergeAttemptedQuestions(existingProgress, details);
         progressDoc.attemptedQuestionCount = Object.keys(progressDoc.attemptedQuestions || {}).length;
@@ -825,68 +938,70 @@
       progressDoc.activeWrongQuestionTimes = wrongState.times;
       progressDoc.activeWrongQuestionCount = Object.keys(wrongState.active || {}).length;
       progressDoc.wrongDataVersion = "v2";
+      progressDoc.processedBatchIds = mergeProcessedBatchIds(existingProgress, batchId, batch.clientCreatedAt);
       writer.set(progressRef, progressDoc, { merge: true });
       opCount++;
 
-      // v1.921：錯題 V2 雙寫。狀態與歷史事件分離，舊欄位暫時保留供回退。
-      var wrongItems = [];
-      details.forEach(function(d, idx) {
-        var qid = String(d.questionFirebaseId || d.firebaseQuestionId || d.questionId || ("Q_" + idx));
-        var wrongRef = db.collection(c.students || "students").doc(batch.studentId).collection("wrongQuestions").doc(safeDocId(qid));
-        if (!d.isCorrect) {
-          writer.set(wrongRef, {
+        // v1.925：錯題只寫 V2；頂層舊 wrongQuestions 已停止寫入。
+        var wrongItems = [];
+        details.forEach(function(d, idx) {
+          var qid = String(d.questionFirebaseId || d.firebaseQuestionId || d.questionId || ("Q_" + idx));
+          var wrongRef = db.collection(c.students || "students").doc(batch.studentId).collection("wrongQuestions").doc(safeDocId(qid));
+          if (!d.isCorrect) {
+            writer.set(wrongRef, {
+              uid: batch.uid,
+              studentId: batch.studentId,
+              questionId: qid,
+              chapterId: d.chapterId || "",
+              topic: d.topic || "未分類",
+              active: true,
+              wrongCount: window.firebase.firestore.FieldValue.increment(1),
+              lastWrongAt: nowField(),
+              resolvedAt: null,
+              lastBatchId: batchId,
+              questionBankVersion: batch.questionBankVersion || ""
+            }, { merge: true });
+            wrongItems.push({ questionId: qid, chapterId: d.chapterId || "", topic: d.topic || "未分類" });
+            opCount++;
+          } else if ((existingProgress.activeWrongQuestions || {})[qid]) {
+            writer.set(wrongRef, {
+              uid: batch.uid,
+              studentId: batch.studentId,
+              questionId: qid,
+              active: false,
+              resolvedAt: nowField(),
+              lastBatchId: batchId
+            }, { merge: true });
+            opCount++;
+          }
+        });
+        if (wrongItems.length) {
+          var eventRef = db.collection(c.students || "students").doc(batch.studentId).collection("wrongReviewEvents").doc(batchId);
+          writer.set(eventRef, {
             uid: batch.uid,
             studentId: batch.studentId,
-            questionId: qid,
-            chapterId: d.chapterId || "",
-            topic: d.topic || "未分類",
-            active: true,
-            wrongCount: window.firebase.firestore.FieldValue.increment(1),
-            lastWrongAt: nowField(),
-            resolvedAt: null,
-            lastBatchId: batchId,
-            questionBankVersion: batch.questionBankVersion || ""
-          }, { merge: true });
-          wrongItems.push({ questionId: qid, chapterId: d.chapterId || "", topic: d.topic || "未分類" });
-          opCount++;
-        } else if ((existingProgress.activeWrongQuestions || {})[qid]) {
-          writer.set(wrongRef, {
-            uid: batch.uid,
-            studentId: batch.studentId,
-            questionId: qid,
-            active: false,
-            resolvedAt: nowField(),
-            lastBatchId: batchId
+            batchId: batchId,
+            wrongAt: nowField(),
+            clientWrongAt: batch.clientCreatedAt,
+            questionIds: wrongItems.map(function(item) { return item.questionId; }),
+            items: wrongItems
           }, { merge: true });
           opCount++;
         }
-      });
-      if (wrongItems.length) {
-        var eventRef = db.collection(c.students || "students").doc(batch.studentId).collection("wrongReviewEvents").doc(batchId);
-        writer.set(eventRef, {
-          uid: batch.uid,
-          studentId: batch.studentId,
-          batchId: batchId,
-          wrongAt: nowField(),
-          clientWrongAt: new Date().toISOString(),
-          questionIds: wrongItems.map(function(item) { return item.questionId; }),
-          items: wrongItems
-        }, { merge: true });
-        opCount++;
       }
-    }
-    
-    if (opCount > 0) {
-      await writer.commit();
-    }
-    return { status: "ok", batchId: batchId, writtenDetails: details.length };
+      return { duplicate: false, opCount: opCount };
+    });
+    return { status: "ok", batchId: batchId, duplicate: !!transactionResult.duplicate, writtenDetails: details.length };
   }
 
   async function submitAttemptWithFallback(payload) {
+    // 離線補送必須沿用相同 batchId 與原始作答時間，避免重複摘要或時間漂移。
+    if (!payload.batchId) payload.batchId = newBatchId();
+    if (!payload.clientCreatedAt) payload.clientCreatedAt = new Date().toISOString();
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.924] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.925] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }
@@ -976,7 +1091,7 @@
         if (cutoff && last && last.getTime() < cutoff) return;
         states.push(state);
       });
-      if (states.length || !stateSnap.empty) {
+      if (states.length) {
         var chapterTopics = Array.from(new Set(states.map(function(s) { return s.topic; }).filter(Boolean)));
         var chapterQuestions = await loadTopicsQuestions(chapterTopics);
         chapterQuestions.forEach(function(q) {
@@ -985,53 +1100,11 @@
         });
         return states.map(function(s) { return questionMap[s.questionId]; }).filter(function(q) { return q && q.id && q.q; });
       }
+      return [];
     } catch (v2Err) {
-      console.warn("[v1.921] 錯題 V2 讀取失敗，使用舊資料：", v2Err);
+      console.warn("[v1.925] 錯題 V2 讀取失敗：", v2Err);
+      throw v2Err;
     }
-
-    var legacyQuestions = await loadTopicsQuestions(topics.length ? topics : (boot && boot.topics || []).map(function(t) { return t.name; }));
-    legacyQuestions.forEach(function (q) {
-      if (q.firebaseQuestionId) questionMap[q.firebaseQuestionId] = q;
-      if (q.id && !questionMap[q.id]) questionMap[q.id] = q;
-    });
-
-    try {
-      var progressSnap = await db.collection(c.studentProgress || "studentProgress").doc(String(studentId || "")).get();
-      if (progressSnap.exists) {
-        var progress = progressSnap.data() || {};
-        var activeMap = progress.activeWrongQuestions || {};
-        var timeMap = progress.activeWrongQuestionTimes || {};
-        var progressOut = [];
-        Object.keys(activeMap).forEach(function(qid) {
-          if (!activeMap[qid]) return;
-          var q = questionMap[qid];
-          if (!q || !q.id || !q.q) return;
-          if (topics.length && !topicSet[q.top || "未分類"]) return;
-          var lastWrongAt = parseClientTime(timeMap[qid]);
-          if (cutoff && lastWrongAt && lastWrongAt.getTime() < cutoff) return;
-          progressOut.push(q);
-        });
-        if (Object.keys(activeMap).length || progress.activeWrongQuestionCount !== undefined) return progressOut;
-      }
-    } catch (err) {
-      // 舊資料沒有 activeWrongQuestions 時，回退查 wrongQuestions 集合。
-    }
-
-    var snap = await db.collection(c.wrongQuestions || "wrongQuestions")
-      .where("studentId", "==", String(studentId || ""))
-      .get();
-
-    var out = [];
-    snap.forEach(function (doc) {
-      var w = doc.data() || {};
-      if (!w.active) return;
-      if (topics.length && !topicSet[w.topic || "未分類"]) return;
-      var lastWrongAt = parseClientTime(w.lastWrongAt) || parseClientTime(w.clientCreatedAt);
-      if (cutoff && lastWrongAt && lastWrongAt.getTime() < cutoff) return;
-      var q = questionMap[w.questionFirebaseId || w.questionId];
-      if (q && q.id && q.q) out.push(q);
-    });
-    return out;
   }
 
   window.Firebase1685 = {

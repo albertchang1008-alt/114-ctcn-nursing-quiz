@@ -3,7 +3,7 @@
 ## 1. 目前狀態
 
 - 專案：題庫系統 v1.9
-- 目前版本：v1.924
+- 目前版本：v1.925
 - 架構方向：Firebase-first，學生端不直接呼叫 GAS。
 - Google Sheet：老師維護題庫、系統設定、學生名單與成績回寫報表。
 - GAS：只作為 Google Sheet 與 Firebase 的同步工具。
@@ -43,6 +43,12 @@
 - [x] v1.922 完成 Firebase 成績 cursor 增量回寫。
 - [x] v1.923 修正章節懶載入造成測驗題數彈窗全部為 0，加入章節快取、metadata fallback 與競態保護。
 - [x] v1.924 成績回寫改用 Asia/Taipei Date，並自動修正既有 UTC ISO 時間字串。
+- [x] v1.925 新增 `scoreSummaries/{batchId}`，並與完整成績、完成度、錯題 V2 以 transaction 原子寫入。
+- [x] v1.925 新增 `topicId`、`completionTopicIds` 與 `studentProgress.topicProgress`，完成度設定不再刪除其他單元最高分。
+- [x] v1.925 修正後台完成度分類顯示 `undefined` 與班級來源空白問題。
+- [x] v1.925 修正 GAS slim 回傳空學生名單；後台會合併 Sheet 全名單與 Firebase 作答分析，未作答學生也可見。
+- [x] v1.925 新增學生歷次成績、逐題時間明細、教師最近 100 筆即時成績。
+- [x] v1.925 停止頂層舊錯題雙寫，離線補送使用固定 batchId 防重。
 
 ## 3. 已知待處理問題
 
@@ -64,6 +70,10 @@
 - [ ] v1.922 需驗證成績同步重跑不重複、cursor 邊界不漏資料。
 - [ ] v1.923 需在 iPhone 實機確認 36 題章節顯示全部 36、未作答 36，10／20／30／全部可選，50 題停用。
 - [ ] v1.924 需部署 GAS 後按一次「同步成績回 Sheet」，確認既有 `03:15:57Z` 顯示為台北 `11:15:57`，且第二次同步不重複新增。
+- [ ] v1.925 需先部署 Firestore rules/indexes，再同步題庫與設定，最後部署前端。
+- [ ] v1.925 需以 dry-run 檢查 `migrate_score_summaries.js` 筆數，維護時段才可加 `--apply --rebuild-progress`。
+- [ ] v1.925 教師帳號需設定 `admin=true` Custom Claim 並重新登入，才可監聽全班成績。
+- [ ] v1.925 需在 Firebase 測試環境驗證 transaction、離線重送與兩裝置同時交卷。
 
 ## 4. 最近修改檔案
 
@@ -75,16 +85,21 @@
 - `README.md`
 - `DEVELOPMENT_LOG.md`
 - `handoff.md`
+- `firebase-config.js`
+- `firestore.rules`
+- `firestore.indexes.json`
+- `migrate_score_summaries.js`
+- `set_admin_claim.js`
 
 ## 5. 下一步建議
 
-1. 將新版 `Code.gs` 貼到 Apps Script，儲存後重新部署或直接在後台使用目前 Web App。
-2. 將新版 `firestore.rules` 貼到 Firebase Console 的 Firestore 規則並發布。
-3. 開啟 `admin.html`，按「同步到 Firebase」，建立 `questionBundles/current`。
-4. 到 Firebase Console 確認 `questionBundles/current` 與 `questionBundles/current/chunks/001...N` 存在。
-5. 部署新版 `index.html`、`firebase-v1685.js` 到 GitHub Pages；`?v=1924` 會強制載入新版程式。
-6. 實機確認學生端正常登入、選科目、選章節、作答與交卷。
-7. 觀察 Firebase reads 是否不再因每次首頁載入而大量讀取 `questions`。
+1. 先發布 `firestore.rules` 與 `firestore.indexes.json`，等待摘要索引完成。
+2. 更新 `Code.gs`，從後台同步 Firebase，確認 topics 有 `topicId` 且設定有 `completionTopicIds`。
+3. 部署 `firebase-config.js`、`firebase-v1685.js`、`index.html`、`admin.html`。
+4. 預覽並核對歷史摘要回補筆數，再於維護時段執行正式回補及最高分重建。
+5. 使用 `set_admin_claim.js` 為指定教師帳號設定 Firebase 管理員 claim。
+6. 驗收學生歷次成績、最高分、完成度、逐題秒數及後台最近 100 筆監聽。
+7. 確認 Google Sheet 仍使用既有 `answerBatches` cursor 增量同步且不重複。
 8. 若修改程式，需同步更新版本號、README.md、DEVELOPMENT_LOG.md 與本檔。
 
 ## 6. 接手規則
@@ -110,7 +125,7 @@ handoff.md
 
 ```text
 請先閱讀 README.md、DEVELOPMENT_LOG.md、handoff.md。
-目前 v1.924 已完成登入優先、章節 bundle 差異同步、錯題 V2、成績 cursor 增量回寫、章節題數彈窗與台北時區修正；舊資料仍保留供回退。
-下一步請依 README 的首次部署順序發布 rules、GAS 與 v1.924 前端，執行一次題庫同步、錯題搬移及成績同步，再觀察 Firebase reads/writes。
+目前 v1.925 已在本機完成 scoreSummaries、topicId/完成度修正、學生歷史與教師即時成績；尚未部署或回填正式 Firebase。
+下一步請依 README 的 v1.925 部署順序先發布 rules/indexes，再同步題庫設定與前端，最後於維護時段回填歷史資料。
 若需要修改，請依 v1.9 Firebase-first 架構進行，並同步更新版本號與三份文件。
 ```

@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.924 slim
+// Google Apps Script — 題庫系統 v1.925 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.924";
+const APP_VERSION = "v1.925";
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -67,16 +67,45 @@ function handleAdminLogin(payload) {
 
 function handleGetTeacherDataSlim() {
   var data = buildFirebasePayloadV19();
+  var roster = (data.students || []).filter(function(s) { return s.enabled !== false; });
+  var studentInfoMap = {};
+  var studentHistory = {};
+  var classMap = {};
+  roster.forEach(function(s) {
+    studentInfoMap[s.studentId] = {
+      studentId: s.studentId,
+      name: s.name,
+      class: s.className,
+      className: s.className,
+      campus: s.campus || "",
+      seatNo: s.seatNo || "",
+      email: s.email || "",
+      role: s.role || "student",
+      enabled: s.enabled !== false
+    };
+    studentHistory[s.studentId] = {
+      studentId: s.studentId,
+      name: s.name,
+      class: s.className,
+      className: s.className,
+      attempts: []
+    };
+    if (!classMap[s.className]) classMap[s.className] = { "class": s.className, studentCount: 0, total: 0, correct: 0, rate: 0, topicBreakdown: [] };
+    classMap[s.className].studentCount++;
+  });
   return jsonResponse({
     status: "ok",
     mode: "slim",
     message: "GAS slim 不再計算分析；請以 Firebase / 匯出資料為準。",
-    classList: data.settings.allClassList || [],
+    classList: Object.keys(classMap).sort(function(a, b) { return a.localeCompare(b, "zh-TW", { numeric: true }); }).map(function(k) { return classMap[k]; }),
+    allClassList: data.settings.allClassList || [],
+    topics: data.settings.topics || [],
+    completionSettings: data.settings.completionSettings || {},
     questionStats: [],
     topicStats: data.settings.topics || [],
     studentWrongDetails: {},
-    studentHistory: {},
-    studentInfoMap: {},
+    studentHistory: studentHistory,
+    studentInfoMap: studentInfoMap,
     counts: data.counts
   });
 }
@@ -142,6 +171,7 @@ function readSettings(ss) {
   return {
     passScore: parseInt(setting(["completion_pass_score"], "80"), 10) || 80,
     completionTopics: splitCsv(setting(["completion_topics"], "")),
+    completionTopicIds: splitCsv(setting(["completion_topic_ids"], "")),
     completionClasses: splitCsv(setting(["completion_classes"], "")),
     deadline: setting(["deadline"], ""),
     systemTitle: setting(["systemTitle", "system_title"], ""),
@@ -181,6 +211,7 @@ function handleSaveSettings(payload) {
   var cards = (payload.loginCards || []).slice(0, 3);
   upsert("completion_pass_score", parseInt(payload.passScore || "80", 10) || 80);
   upsert("completion_topics", (payload.completionTopics || []).join(","));
+  upsert("completion_topic_ids", (payload.completionTopicIds || []).join(","));
   upsert("completion_classes", (payload.completionClasses || []).join(","));
   upsert("allowed_email_enabled", payload.emailDomainRestrictionEnabled ? "TRUE" : "FALSE");
   upsert("email_domain_restriction_enabled", payload.emailDomainRestrictionEnabled ? "true" : "false");
@@ -286,6 +317,8 @@ function readQuestionsForFirebaseV19(ss) {
     var category = getCell(row, cCategory) || chapter || subCategory || unit || "未分類";
     if ((category === unit || /^\d+(\.0+)?$/.test(category)) && chapter) category = chapter;
     var top = subjectName ? subjectName + "｜" + category : category;
+    var courseId = "course_" + stableHashText([subjectId || subjectName, year, term].join("|")).slice(0, 24);
+    var topicId = "topic_" + stableHashText([courseId, subjectId || subjectName, chapterId || chapter || category].join("|")).slice(0, 24);
     var qid = getCell(row, cId) || "ROW_" + (r + 1);
     var baseId = [subjectId || subjectName, year, term, chapterId || chapter, category, qid].filter(Boolean).join("__") || ("ROW_" + (r + 1));
     if (seen[baseId]) {
@@ -314,6 +347,8 @@ function readQuestionsForFirebaseV19(ss) {
       subject: subjectName,
       subjectId: subjectId,
       subjectName: subjectName,
+      courseId: courseId,
+      topicId: topicId,
       year: year,
       term: term,
       chapter: chapter,
@@ -370,6 +405,8 @@ function buildTopics(questions) {
       subjectName: q.subjectName || q.subject || "",
       chapterId: q.chapterId || "",
       chapterName: q.chapterName || q.chapter || q.category || q.top,
+      courseId: q.courseId || "",
+      topicId: q.topicId || "",
       chapter: q.chapter || q.chapterName || "",
       category: q.category || q.top,
       lectureTitle: q.lectureTitle || "",
@@ -409,7 +446,9 @@ function readStudentsForFirebaseV19(ss) {
   var headers = rows[0].map(function(h) { return String(h || "").trim(); });
   var cId = findColIdx(headers, ["學號", "studentId", "student_id", "id"]);
   var cName = findColIdx(headers, ["姓名", "學生姓名", "name"]);
-  var cClass = findColIdx(headers, ["班級", "修課班級", "class", "className"]);
+  // 同時存在「修課班級」與「班級」時，以實際修課班級為主。
+  var cCourseClass = findColIdx(headers, ["修課班級", "課程班級", "courseClass", "course_class"]);
+  var cHomeClass = findColIdx(headers, ["班級", "原班級", "class", "className"]);
   var cCampus = findColIdx(headers, ["校區", "campus"]);
   var cSeat = findColIdx(headers, ["座號", "seatNo", "seat"]);
   var cEmail = findColIdx(headers, ["Email", "email", "E-mail", "電子郵件", "信箱", "學校email", "Google帳號", "Google信箱"]);
@@ -421,15 +460,17 @@ function readStudentsForFirebaseV19(ss) {
     if (!sid) continue;
     var email = normalizeEmail(getCell(rows[i], cEmail));
     var enabledRaw = getCell(rows[i], cEnabled);
+    var role = getCell(rows[i], cRole) || "student";
+    if (/^(teacher|admin|教師|老師|管理員)$/i.test(role)) continue;
     out.push({
       studentId: sid,
       name: getCell(rows[i], cName) || sid,
-      className: getCell(rows[i], cClass) || "未分班",
+      className: getCell(rows[i], cCourseClass) || getCell(rows[i], cHomeClass) || "未分班",
       campus: getCell(rows[i], cCampus),
       seatNo: getCell(rows[i], cSeat),
       email: email,
       emailKey: emailKey(email),
-      role: getCell(rows[i], cRole) || "student",
+      role: role,
       enabled: enabledRaw ? !/^(停用|否|false|disabled|0)$/i.test(enabledRaw) : true,
       updatedAtText: localNow()
     });
@@ -657,6 +698,8 @@ function stripQuestionForBundleV19(q) {
     firebaseQuestionId: q.firebaseQuestionId || "",
     originalQuestionId: q.originalQuestionId || "",
     top: q.top || "",
+    courseId: q.courseId || "",
+    topicId: q.topicId || "",
     subjectId: q.subjectId || "",
     subjectName: q.subjectName || q.subject || "",
     chapterId: q.chapterId || "",
