@@ -135,7 +135,7 @@
     publicConfigCache = snap.exists ? (snap.data() || {}) : {
       title: "動態題庫測驗",
       titleColor: "sky",
-      version: "v1.923"
+      version: "v1.924"
     };
     return publicConfigCache;
   }
@@ -241,14 +241,14 @@
     try {
       settings = await loadAuthenticatedSettings();
     } catch (err) {
-      console.warn("[v1.923] Firebase 設定讀取失敗，略過：", err);
+      console.warn("[v1.924] Firebase 設定讀取失敗，略過：", err);
     }
     var questions = [];
     var bundle = null;
     var chapterMode = settings.questionLoadMode === "chapterBundle" && settings.activeQuestionBankPath;
     if (!chapterMode && cfg.allowLegacyQuestionFallback) {
       try { bundle = await loadQuestionBundle(settings); } catch (err) {
-        console.warn("[v1.923] 舊題庫 bundle 讀取失敗：", err);
+        console.warn("[v1.924] 舊題庫 bundle 讀取失敗：", err);
       }
       questions = bundle ? bundle.questions : await loadQuestionsFallback(settings);
     }
@@ -464,7 +464,7 @@
       authProvider: "google",
       createdAt: nowField(),
       updatedAt: nowField(),
-      source: "self-register-v1.923"
+      source: "self-register-v1.924"
     };
     var writer = db.batch();
     writer.set(studentRef, data, { merge: false });
@@ -511,7 +511,7 @@
       loginTime: nowField(),
       status: "active",
       authProvider: "google",
-      source: "firebase-v1.923"
+      source: "firebase-v1.924"
     };
     await db.collection(c.loginStates || "loginStates").doc(info.studentId).set(info, { merge: true });
     return token;
@@ -648,7 +648,7 @@
       lastScore: batch.score,
       updatedAt: nowField(),
       updatedAtText: new Date().toISOString(),
-      source: "firebase-v1.923-progress"
+      source: "firebase-v1.924-progress"
     };
   }
 
@@ -713,7 +713,7 @@
       settingsVersion: payload.settingsVersion || "",
       createdAt: nowField(),
       clientCreatedAt: new Date().toISOString(),
-      source: "firebase-v1.923",
+      source: "firebase-v1.924",
       detailsJson: JSON.stringify(details.map(function (d, idx) {
         return {
           questionId: d.questionId || ("Q_" + idx),
@@ -785,7 +785,7 @@
           clientCreatedAt: new Date().toISOString(),
           lastBatchId: batchId,
           active: true,
-          source: "firebase-v1.923"
+          source: "firebase-v1.924"
         }, { merge: true });
         opCount++;
       }
@@ -886,7 +886,7 @@
     try {
       return await submitAttempt(payload);
     } catch (err) {
-      console.warn("[v1.923] Firebase 作答寫入失敗，已暫存：", err);
+      console.warn("[v1.924] Firebase 作答寫入失敗，已暫存：", err);
       enqueue(payload);
       return { status: "queued", message: err.message };
     }

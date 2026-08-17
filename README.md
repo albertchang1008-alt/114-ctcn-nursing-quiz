@@ -1,4 +1,4 @@
-# 題庫系統 v1.923 佈建說明
+# 題庫系統 v1.924 佈建說明
 
 ## 文件維護規則
 
@@ -15,9 +15,9 @@ GAS / Firebase 同步狀態中的版本號
 本次版本：
 
 ```text
-版本：v1.923
-日期：2026-08-16
-重點：修正章節懶載入後，測驗題數彈窗錯誤顯示全部／已作答／未作答皆為 0。
+版本：v1.924
+日期：2026-08-17
+重點：Firebase 成績回寫統一使用 Asia/Taipei，並自動修正既有 UTC ISO 時間。
 ```
 
 ## v1.919～v1.922 改造摘要
@@ -45,6 +45,13 @@ GAS / Firebase 同步狀態中的版本號
 - 修正：加入章節級 `topicQuestionsCache`；點「測驗」時載入該章 bundle，並用實際題目 ID 和 `studentProgress.attemptedQuestions` 計算已作答／未作答。
 - 容錯：章節 bundle 尚在載入或失敗時，先使用 topic metadata 的 `count`，不再把有題目的章節判定為 0。
 - 競態保護：快速切換不同章節時，較早完成的請求不會覆蓋目前彈窗。
+
+## v1.924 成績時間改為台北時區
+
+- `clientCreatedAt` 保持 UTC ISO 字串作為增量 cursor，不改變同步邊界。
+- 寫入 Sheet 時優先使用 Firestore `createdAt`，以真正的 Date 值保存；試算表時區固定為 `Asia/Taipei`，A 欄格式固定為 `yyyy/mm/dd hh:mm:ss`。
+- 每次同步會檢查既有時間欄，把 `2026-08-17T03:15:57.932Z` 這類含時區的 ISO 字串轉成 Date；台北顯示為 `2026/08/17 11:15:57`。
+- 既有本地格式與公式不做 UTC 轉換；後台會回報本次修正的舊時間筆數。
 
 ## 版本定位
 
@@ -718,7 +725,7 @@ DEVELOPMENT_LOG.md
 cd "/Users/HHC/Documents/New project/題庫系統-v1.9"
 git status
 git add index.html admin.html firebase-config.js firebase-v1685.js README.md DEVELOPMENT_LOG.md Code.gs firestore.rules firestore.indexes.json
-git commit -m "Release v1.923"
+git commit -m "Release v1.924"
 git push
 ```
 

@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.923</p>
+                <p class="font-bold text-gray-800">v1.924</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.923 ／ 差異同步 + 錯題 V2">v1.923</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.924 ／ 台北時區成績同步">v1.924</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1014,7 +1014,8 @@ async function updateScoreTable() {
     btn.disabled = true;
     try {
         const res = await postGAS({ action: "syncFirestoreScoresToSheetsV19" });
-        btn.innerHTML = "✅ " + (res.message || "更新完成");
+        const fixed = Number(res.convertedTimestamps || 0);
+        btn.innerHTML = "✅ " + (res.message || "更新完成") + (fixed ? `，修正舊時間 ${fixed} 筆` : "");
         setTimeout(() => { btn.innerHTML = origText; btn.disabled = false; }, 3000);
     } catch(e) {
         btn.innerHTML = "❌ 失敗";
@@ -1045,7 +1046,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.923";
+    document.title = "教師後台 - 題庫系統 v1.924";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();

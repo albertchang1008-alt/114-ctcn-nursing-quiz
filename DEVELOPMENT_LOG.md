@@ -462,3 +462,14 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - topic metadata `count` 作為載入前與錯誤時的 fallback，確保有題目的章節不會顯示 0。
 - 加入快速切換章節的非同步競態保護。
 - `index.html` inline JavaScript 語法與題數統計測試通過。
+# v1.924 - 2026-08-17
+
+### 問題與根因
+
+- 成績紀錄的時間欄直接寫入 `clientCreatedAt` UTC ISO 字串，Google Sheet 因此顯示尾端 `Z` 的 UTC 時間，而非台北時間。
+
+### 修正
+
+- 增量 cursor 繼續保存 UTC ISO，避免改變查詢排序與重疊去重邏輯。
+- Sheet 寫入改用 Date，試算表時區固定為 `Asia/Taipei`，顯示格式為 `yyyy/mm/dd hh:mm:ss`。
+- 同步時自動轉換既有含 `Z` 或 offset 的 ISO 時間字串，並保留公式與既有本地格式。

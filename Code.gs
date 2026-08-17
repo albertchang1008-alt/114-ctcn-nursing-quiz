@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.923 slim
+// Google Apps Script — 題庫系統 v1.924 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.923";
+const APP_VERSION = "v1.924";
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -1039,6 +1039,41 @@ function compressDetailsJson(jsonStr) {
   }
 }
 
+function scoreTimestampDateV1924(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return value;
+  if (typeof value === "string" && value.trim()) {
+    var parsed = new Date(value.trim());
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function normalizeScoreSheetTimesToTaipeiV1924(ss, sheet) {
+  if (ss.getSpreadsheetTimeZone() !== "Asia/Taipei") ss.setSpreadsheetTimeZone("Asia/Taipei");
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return 0;
+  var range = sheet.getRange(2, 1, lastRow - 1, 1);
+  var values = range.getValues();
+  var formulas = range.getFormulas();
+  var isoWithZone = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  var converted = 0;
+  for (var i = 0; i < values.length; i++) {
+    if (formulas[i][0]) {
+      values[i][0] = formulas[i][0];
+      continue;
+    }
+    var raw = values[i][0];
+    if (typeof raw !== "string" || !isoWithZone.test(raw.trim())) continue;
+    var parsed = scoreTimestampDateV1924(raw);
+    if (!parsed) continue;
+    values[i][0] = parsed;
+    converted++;
+  }
+  if (converted) range.setValues(values);
+  range.setNumberFormat("yyyy/mm/dd hh:mm:ss");
+  return converted;
+}
+
 function handleSyncFirestoreScoresToSheetsV19(payload) {
   var props = PropertiesService.getScriptProperties();
   var projectId = props.getProperty("FIREBASE_PROJECT_ID");
@@ -1046,6 +1081,7 @@ function handleSyncFirestoreScoresToSheetsV19(payload) {
   var token = firebaseAccessToken();
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ensureScoreSheet(ss);
+  var convertedTimestamps = normalizeScoreSheetTimesToTaipeiV1924(ss, sheet);
   var existing = existingBatchIds(sheet);
   var lastCursor = props.getProperty("LAST_SCORE_CURSOR_ISO") || "";
   var docs = queryAnswerBatchesSinceV1922(projectId, token, lastCursor);
@@ -1057,8 +1093,7 @@ function handleSyncFirestoreScoresToSheetsV19(payload) {
     if (itemCursor && (!maxCursor || itemCursor > maxCursor)) maxCursor = itemCursor;
     var batchId = item.batchId || doc.name.split("/").pop();
     if (existing[batchId]) return;
-    var created = item.clientCreatedAt || item.createdAt || "";
-    if (created instanceof Date) created = Utilities.formatDate(created, "Asia/Taipei", "yyyy/MM/dd HH:mm:ss");
+    var created = scoreTimestampDateV1924(item.createdAt) || scoreTimestampDateV1924(item.clientCreatedAt) || new Date();
     rows.push([
       created || localNow(),
       item.studentId || "",
@@ -1077,9 +1112,13 @@ function handleSyncFirestoreScoresToSheetsV19(payload) {
       compressDetailsJson(item.detailsJson || "")
     ]);
   });
-  rows.sort(function(a, b) { return String(a[0]).localeCompare(String(b[0])); });
-  if (rows.length) sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, SCORE_HEADERS.length).setValues(rows);
+  rows.sort(function(a, b) { return a[0].getTime() - b[0].getTime(); });
+  if (rows.length) {
+    var startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rows.length, SCORE_HEADERS.length).setValues(rows);
+    sheet.getRange(startRow, 1, rows.length, 1).setNumberFormat("yyyy/mm/dd hh:mm:ss");
+  }
   if (maxCursor) props.setProperty("LAST_SCORE_CURSOR_ISO", maxCursor);
   props.setProperty("LAST_SCORE_SYNC_AT", localNow());
-  return jsonResponse({ status: "ok", message: "已增量同步 Firebase 成績回 Sheet", appended: rows.length, scanned: docs.length, cursor: maxCursor });
+  return jsonResponse({ status: "ok", message: "已增量同步 Firebase 成績回 Sheet（Asia/Taipei）", appended: rows.length, scanned: docs.length, convertedTimestamps: convertedTimestamps, cursor: maxCursor });
 }
