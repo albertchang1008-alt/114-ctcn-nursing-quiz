@@ -480,6 +480,8 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 新增 `scoreSummaries/{batchId}` 輕量逐次摘要，與完整 `answerBatches` 同批寫入。
 - 修正 `getTeacherData` 將 Google Sheet 學生名單回傳為空物件的問題；未作答學生現在也會出現在後台班級名單。
 - 學生名單同時有「修課班級」與「班級」時優先採用修課班級，並排除 teacher/admin 角色進入學生同步。
+- 重寫後台 Firebase 同步：題庫、設定、學生名單各有獨立 action 與按鈕；完整同步保留但需再次確認。
+- 學生名單同步只讀「學生名單」，設定同步只讀系統設定與題庫首列標題，只有題庫同步會建立題庫 hash、章節 manifest 與 chunks。
 - 離線佇列預先產生並保留 `batchId`，避免重送重複紀錄。
 - 新增學生歷史分頁、逐題時間明細及後台最近 100 筆即時監聽。
 

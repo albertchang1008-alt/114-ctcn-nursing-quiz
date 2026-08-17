@@ -47,6 +47,7 @@
 - [x] v1.925 新增 `topicId`、`completionTopicIds` 與 `studentProgress.topicProgress`，完成度設定不再刪除其他單元最高分。
 - [x] v1.925 修正後台完成度分類顯示 `undefined` 與班級來源空白問題。
 - [x] v1.925 修正 GAS slim 回傳空學生名單；後台會合併 Sheet 全名單與 Firebase 作答分析，未作答學生也可見。
+- [x] v1.925 將 Firebase 發布拆為題庫、設定、學生名單三個獨立同步，另保留需確認的完整同步。
 - [x] v1.925 新增學生歷次成績、逐題時間明細、教師最近 100 筆即時成績。
 - [x] v1.925 停止頂層舊錯題雙寫，離線補送使用固定 batchId 防重。
 

@@ -31,6 +31,7 @@ GAS / Firebase 同步狀態中的版本號
 - 後台即時監聽要求 Firebase `admin` Custom Claim，不會開放一般登入者讀取全班資料。
 - 離線補送固定沿用原 `batchId`，避免同一次作答產生重複摘要。
 - 錯題只寫 `students/{studentId}/wrongQuestions` V2，停止頂層舊錯題雙寫。
+- 後台 Firebase 發布拆成「同步題庫」、「同步設定」、「同步學生名單」與需確認的「完整同步」。學生名單同步不再讀取或計算題庫；設定同步使用欄位 merge，不會覆蓋題庫指標。
 
 部署順序：
 
@@ -1074,6 +1075,10 @@ adminLogin
 saveSettings
 syncFirebaseV19
 syncFirebaseV1685
+syncQuestionBankV1925
+syncSettingsV1925
+syncStudentsV1925
+syncAllFirebaseV1925
 validateStudentEmailsV19
 syncFirestoreScoresToSheetsV19
 getFirebaseBootstrap

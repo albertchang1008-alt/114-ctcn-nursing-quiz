@@ -745,7 +745,7 @@
             <!-- Tab 設定：完成度設定 -->
             <div id="tab-settings" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h2 class="text-lg font-bold text-gray-800 mb-2">⚙️ 完成度與首頁設定</h2>
-                <p class="text-sm text-gray-400 mb-6">設定後儲存，再同步到 Firebase，學生端會套用最新首頁文字與登入限制。</p>
+                <p class="text-sm text-gray-400 mb-6">設定先儲存到 Google Sheet，再按「同步設定」發布到 Firebase。題庫、設定與學生名單可各自獨立同步。</p>
 
                 <!-- 首頁顯示設定 -->
                 <div class="mb-6 border border-sky-100 rounded-xl p-4 bg-sky-50/40">
@@ -846,9 +846,21 @@
                         class="bg-sky-500 hover:bg-sky-600 text-white font-bold px-8 py-3 rounded-xl transition">
                         💾 儲存設定
                     </button>
+                    <button id="firebase-settings-sync-btn" onclick="syncFirebasePartV1925('syncSettingsV1925','firebase-settings-sync-btn','⚙️ 同步設定')"
+                        class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-6 py-3 rounded-xl transition">
+                        ⚙️ 同步設定
+                    </button>
+                    <button id="firebase-students-sync-btn" onclick="syncFirebasePartV1925('syncStudentsV1925','firebase-students-sync-btn','👥 同步學生名單')"
+                        class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold px-6 py-3 rounded-xl transition">
+                        👥 同步學生名單
+                    </button>
+                    <button id="firebase-questions-sync-btn" onclick="syncFirebasePartV1925('syncQuestionBankV1925','firebase-questions-sync-btn','📚 同步題庫')"
+                        class="bg-violet-500 hover:bg-violet-600 text-white font-bold px-6 py-3 rounded-xl transition">
+                        📚 同步題庫
+                    </button>
                     <button id="firebase-sync-btn" onclick="syncFirebaseV1685()"
-                        class="bg-emerald-500 hover:bg-emerald-600 text-white font-bold px-8 py-3 rounded-xl transition">
-                        🔥 同步到 Firebase
+                        class="bg-gray-700 hover:bg-gray-800 text-white font-bold px-6 py-3 rounded-xl transition">
+                        🔥 完整同步
                     </button>
                     <button id="student-email-check-btn" onclick="validateStudentEmailsV19()"
                         class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold px-8 py-3 rounded-xl transition">
@@ -3521,7 +3533,7 @@ async function saveCompletionSettings() {
             loginCards
         });
         if (res.status !== "ok") throw new Error(res.message || "儲存失敗");
-        status.textContent  = "✓ 設定已儲存！請再按「同步到 Firebase」，學生端才會套用最新登入限制、首頁文字與完成度設定。";
+        status.textContent  = "✓ 設定已儲存到 Google Sheet！請再按「同步設定」，學生端才會套用最新內容。";
         status.className    = "text-sm mt-3 font-medium text-green-600";
         status.classList.remove("hidden");
     } catch(e) {
@@ -3533,8 +3545,8 @@ async function saveCompletionSettings() {
     }
 }
 
-async function syncFirebaseV1685() {
-    const btn = document.getElementById("firebase-sync-btn");
+async function syncFirebasePartV1925(action, buttonId, fallbackLabel) {
+    const btn = document.getElementById(buttonId);
     const status = document.getElementById("settings-save-status");
     const oldText = btn ? btn.textContent : "";
     if (btn) {
@@ -3542,7 +3554,7 @@ async function syncFirebaseV1685() {
         btn.textContent = "同步中...";
     }
     try {
-        const res = await postGAS({ action: "syncFirebaseV19" });
+        const res = await postGAS({ action });
         if (res.status === "needs_config") {
             status.textContent = "Firebase 尚未完成 GAS 屬性設定：請確認 FIREBASE_PROJECT_ID、FIREBASE_CLIENT_EMAIL、FIREBASE_PRIVATE_KEY。";
             status.className = "text-sm mt-3 font-medium text-amber-600";
@@ -3551,9 +3563,11 @@ async function syncFirebaseV1685() {
         }
         if (res.status !== "ok") throw new Error(res.message || "同步失敗");
         const c = res.counts || {};
-        const bankNote = res.questionBankChanged ? "題庫有變更" : "題庫未變更，已跳過";
-        const studentNote = res.studentsChanged ? "名單有變更" : "名單未變更，已跳過";
-        status.textContent = `✓ Firebase 同步完成：${bankNote}、${studentNote}；實際寫入 ${res.written || 0} 筆。題目 ${c.questions || 0} 筆、學生 ${c.students || 0} 位。`;
+        const countParts = [];
+        if (c.questions !== undefined) countParts.push(`題目 ${c.questions} 筆`);
+        if (c.topics !== undefined) countParts.push(`分類 ${c.topics} 個`);
+        if (c.students !== undefined) countParts.push(`學生 ${c.students} 位`);
+        status.textContent = `✓ ${res.message || "Firebase 同步完成"}；寫入 ${res.written || 0} 筆${countParts.length ? "；" + countParts.join("、") : ""}。`;
         status.className = "text-sm mt-3 font-medium text-green-600";
         status.classList.remove("hidden");
     } catch(e) {
@@ -3563,9 +3577,14 @@ async function syncFirebaseV1685() {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.textContent = oldText || "🔥 同步到 Firebase";
+            btn.textContent = oldText || fallbackLabel;
         }
     }
+}
+
+async function syncFirebaseV1685() {
+    if (!confirm("完整同步會依序處理題庫、設定與學生名單。確定要繼續嗎？")) return;
+    return syncFirebasePartV1925("syncAllFirebaseV1925", "firebase-sync-btn", "🔥 完整同步");
 }
 
 async function migrateWrongQuestionsV2() {
@@ -4062,6 +4081,10 @@ async function postGAS(obj) {
         "saveSettings",
         "syncFirebaseV19",
         "syncFirebaseV1685",
+        "syncQuestionBankV1925",
+        "syncSettingsV1925",
+        "syncStudentsV1925",
+        "syncAllFirebaseV1925",
         "validateStudentEmailsV19",
         "syncFirestoreScoresToSheetsV19",
         "migrateWrongQuestionsV2",
