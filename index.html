@@ -3159,6 +3159,15 @@ function getStudentCompletionScope() {
     };
 }
 
+function scoreHistoryErrorText(err) {
+    const code = String(err?.code || "").replace(/^firestore\//, "");
+    if (code === "failed-precondition") return "歷次成績索引尚未建立或仍在建置，請通知老師完成 Firebase indexes 部署。";
+    if (code === "permission-denied") return "歷次成績讀取權限尚未啟用，請通知老師部署新版 Firestore rules。";
+    if (code === "unauthenticated") return "登入狀態已失效，請重新登入後再查看歷次成績。";
+    if (code === "unavailable") return "目前無法連線 Firebase，請確認網路後重試。";
+    return "歷次成績讀取失敗，請稍後再試。";
+}
+
 async function openScoreHistory() {
     const modal = document.getElementById("score-history-modal");
     modal.style.display = "flex";
@@ -3186,11 +3195,12 @@ async function loadMoreScoreHistory() {
     status.textContent = scoreHistoryLastDoc ? "載入更多成績中..." : "讀取歷次成績中...";
     more.classList.add("hidden");
     try {
-        await window.Firebase1685.ensureSignedIn();
+        const user = await window.Firebase1685.ensureSignedIn();
+        if (!user?.uid) throw Object.assign(new Error("Firebase 登入狀態不存在"), { code: "unauthenticated" });
         const db = window.firebase.firestore();
         const coll = window.FIREBASE_V18_CONFIG?.collections?.scoreSummaries || "scoreSummaries";
         let query = db.collection(coll)
-            .where("studentId", "==", studentId)
+            .where("uid", "==", user.uid)
             .orderBy("answeredAt", "desc")
             .limit(20);
         if (scoreHistoryLastDoc) query = query.startAfter(scoreHistoryLastDoc);
@@ -3203,7 +3213,7 @@ async function loadMoreScoreHistory() {
         more.classList.toggle("hidden", !scoreHistoryHasMore);
     } catch (err) {
         console.error("讀取歷次成績失敗：", err);
-        status.textContent = "歷次成績讀取失敗，請稍後再試。";
+        status.textContent = scoreHistoryErrorText(err);
         status.classList.remove("hidden");
     } finally {
         scoreHistoryLoading = false;
