@@ -1185,6 +1185,8 @@ function saveLocalSession(student, user, token) {
         token,
         className: String(student.className || student.class || ""),
         campus: String(student.campus || ""),
+        subjectId: String(student.subjectId || ""),
+        subjectIds: Array.isArray(student.subjectIds) ? student.subjectIds : [],
         savedAt: Date.now()
     }));
 }
@@ -1428,6 +1430,7 @@ function applyStudentLoginState(student, user, token) {
     studentName = String(student.name || student.studentName || studentId);
     studentClassName = String(student.className || student.class || "");
     studentCampus = String(student.campus || "");
+    studentSubjectIds = [...new Set((Array.isArray(student.subjectIds) ? student.subjectIds : String(student.subjectId || "").split(/[,，;；]+/)).map(v => String(v || "").trim()).filter(Boolean))];
     studentEmail = window.Firebase1685.normalizeEmail(student.email || user?.email || "");
     firebaseUid = user?.uid || student.uid || "";
     sessionToken = token || sessionToken || "";
@@ -1438,7 +1441,16 @@ async function enterMainMenuAfterLogin() {
     if (!result || result.status !== "success" || !result.topics?.length) {
         throw new Error("登入成功，但章節題庫尚未完成同步");
     }
-    topicsData = result.topics || [];
+    const publishedTopics = result.topics || [];
+    const allowedSubjectSet = new Set(studentSubjectIds);
+    topicsData = allowedSubjectSet.size
+        ? publishedTopics.filter(topic => allowedSubjectSet.has(String(topic.subjectId || "").trim()))
+        : publishedTopics;
+    if (allowedSubjectSet.size && !topicsData.length) {
+        throw new Error("學生名單的科目ID沒有對應到已發布題庫，請聯絡老師重新同步名單");
+    }
+    const availableSubjectIds = [...new Set(topicsData.map(topic => String(topic.subjectId || "").trim()).filter(Boolean))];
+    selectedSubjectKey = availableSubjectIds.length === 1 ? availableSubjectIds[0] : "";
     allQuestionsForMenu = [];
     completionSettings = result.completionSettings || completionSettings;
     allClassList = result.allClassList || [];
@@ -1583,6 +1595,7 @@ let studentId          = "";
 let studentEmail       = "";
 let studentClassName   = "";
 let studentCampus      = "";
+let studentSubjectIds  = [];
 let firebaseUid        = "";
 let currentStudentProfile = null;
 let currentGoogleUser  = null;
@@ -1745,6 +1758,7 @@ async function finishGoogleLogin(user) {
     studentName = String(student.name || student.studentName || studentId);
     studentClassName = String(student.className || student.class || "");
     studentCampus = String(student.campus || "");
+    studentSubjectIds = [...new Set((Array.isArray(student.subjectIds) ? student.subjectIds : String(student.subjectId || "").split(/[,，;；]+/)).map(v => String(v || "").trim()).filter(Boolean))];
     studentEmail = window.Firebase1685.normalizeEmail(student.email || user.email || "");
     firebaseUid = user.uid || "";
 
@@ -2670,9 +2684,7 @@ function showResults(scoreCorrect) {
         ip: clientIP,
         details,
         isRetryMode,
-        passScore: completionSettings?.passScore || 80,
-        completionTopics: completionSettings?.completionTopics || [],
-        completionTopicIds: completionSettings?.completionTopicIds || []
+        ...getStudentCompletionScope()
     }, "save-status").then(res => {
         if (res.status === "ok") {
             const saveStatus = document.getElementById("save-status");
@@ -3038,9 +3050,7 @@ function showFlashcardDone() {
             ip: clientIP,
             details: fcAnswerLog,
             isRetryMode: false,
-            passScore: completionSettings?.passScore || 80,
-            completionTopics: completionSettings?.completionTopics || [],
-            completionTopicIds: completionSettings?.completionTopicIds || []
+            ...getStudentCompletionScope()
         }).then(res => {
             const fcStatus = document.getElementById("fc-save-status");
             if (res.status === "ok") {
@@ -3131,6 +3141,22 @@ function formatDurationSeconds(seconds) {
     const total = Math.max(0, Number(seconds) || 0);
     if (total < 60) return `${total} 秒`;
     return `${Math.floor(total / 60)} 分 ${total % 60} 秒`;
+}
+
+function getStudentCompletionScope() {
+    const allowedSubjectSet = new Set(studentSubjectIds);
+    const studentTopics = allowedSubjectSet.size
+        ? (topicsData || []).filter(topic => allowedSubjectSet.has(String(topic.subjectId || "").trim()))
+        : [];
+    const studentTopicIds = new Set(studentTopics.map(topic => topic.topicId).filter(Boolean));
+    const studentTopicNames = new Set(studentTopics.map(topic => topic.name).filter(Boolean));
+    return {
+        subjectIds: [...studentSubjectIds],
+        completionScopeResolved: true,
+        passScore: completionSettings?.passScore || 80,
+        completionTopicIds: (completionSettings?.completionTopicIds || []).filter(id => studentTopicIds.has(id)),
+        completionTopics: (completionSettings?.completionTopics || []).filter(name => studentTopicNames.has(name))
+    };
 }
 
 async function openScoreHistory() {
@@ -3296,8 +3322,11 @@ async function loadMyCompletion() {
 
 function renderMyCompletion(data) {
     const { passScore, completionTopics = [], completionTopicIds = [], details = [] } = data;
-    const completionNameSet = new Set(completionTopics);
-    const completionIdSet = new Set(completionTopicIds);
+    const visibleTopicIds = new Set((topicsData || []).map(topic => topic.topicId).filter(Boolean));
+    const visibleTopicNames = new Set((topicsData || []).map(topic => topic.name).filter(Boolean));
+    const hasAssignedSubjects = studentSubjectIds.length > 0;
+    const completionNameSet = new Set(hasAssignedSubjects ? completionTopics.filter(name => visibleTopicNames.has(name)) : []);
+    const completionIdSet = new Set(hasAssignedSubjects ? completionTopicIds.filter(id => visibleTopicIds.has(id)) : []);
     const passed = details.filter(d => d.passed && (
         completionIdSet.size > 0
             ? (completionIdSet.has(d.topicId) || completionNameSet.has(d.topic))

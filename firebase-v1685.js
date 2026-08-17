@@ -591,6 +591,9 @@
     var passScore = Number(payload.passScore || payload.completionPassScore || 0);
     var completionTopics = Array.isArray(payload.completionTopics) ? payload.completionTopics.slice() : [];
     var completionTopicIds = Array.isArray(payload.completionTopicIds) ? payload.completionTopicIds.slice() : [];
+    if (payload.completionScopeResolved === true) {
+      return { passScore: passScore || 80, completionTopics: completionTopics, completionTopicIds: completionTopicIds };
+    }
     if (passScore && (completionTopics.length || completionTopicIds.length)) {
       return { passScore: passScore, completionTopics: completionTopics, completionTopicIds: completionTopicIds };
     }
@@ -852,6 +855,8 @@
       name: payload.name || "",
       className: payload.className || "",
       campus: payload.campus || "",
+      subjectId: Array.isArray(payload.subjectIds) ? (payload.subjectIds[0] || "") : (payload.subjectId || ""),
+      subjectIds: Array.isArray(payload.subjectIds) ? payload.subjectIds.slice() : (payload.subjectId ? [payload.subjectId] : []),
       topic: payload.topic || "",
       mode: payload.mode || "",
       attempt: Number(payload.attempt) || 1,
@@ -933,6 +938,8 @@
       progressDoc.email = batch.email;
       progressDoc.className = batch.className;
       progressDoc.campus = batch.campus;
+      progressDoc.subjectId = batch.subjectId;
+      progressDoc.subjectIds = batch.subjectIds;
       var wrongState = mergeActiveWrongQuestions(existingProgress, details);
       progressDoc.activeWrongQuestions = wrongState.active;
       progressDoc.activeWrongQuestionTimes = wrongState.times;
