@@ -570,3 +570,19 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 
 - 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.929`。
 - JavaScript、GAS 語法及科目 fallback 邏輯需完成靜態驗收。
+
+# v1.930 - 2026-08-18
+
+## 完成度定義修正
+
+- 發現入口單元卡片的「完成度％」採用做過題數／總題數，與入口頂端及後台的達標完成度不同。
+- 將該百分比正名為「題目練習率」，保留其追蹤題目接觸範圍的用途。
+- 新增正式「完成狀態」，由 `studentProgress.topicProgress`／`details` 的最高有效分數與後台門檻判定。
+- 完整測驗與完整閃卡會更新最高有效分數；抽題練習只更新題目練習率。
+- 歷次成績清單與明細同步顯示目前單元完成狀態，與入口及後台共用同一資料來源。
+- 修正舊學生缺少科目ID時，完成度範圍被清空而隱藏摘要的相容問題。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.930`。
+- 需驗證達標、未達標、未納入完成度，以及抽題練習不改變正式完成狀態等情境。
