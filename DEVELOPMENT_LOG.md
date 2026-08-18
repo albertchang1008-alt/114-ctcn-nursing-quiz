@@ -556,3 +556,17 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 
 - 學生端、後台、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.928`。
 - 尚需部署 GAS 與前端，後台儲存並同步設定後，以學生帳號確認表格及單元篩選。
+
+# v1.929 - 2026-08-18
+
+## 歷次成績清單精簡
+
+- 歷次成績由五欄橫向表格改為單欄三行表格，每筆依序顯示科目、單元與成績。
+- 成績行右側保留台北時間的日期與分鐘，方便分辨同單元多次作答。
+- 答對題數與用時僅在點入明細後顯示，降低手機清單資訊密度。
+- 科目優先讀取成績摘要的 `subjectName`／`subjectId`，舊資料則由題庫 topic metadata 補找。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.929`。
+- JavaScript、GAS 語法及科目 fallback 邏輯需完成靜態驗收。

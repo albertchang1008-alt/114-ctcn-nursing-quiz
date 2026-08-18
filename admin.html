@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1928"></script>
-    <script src="firebase-v1685.js?v=1928"></script>
+    <script src="firebase-config.js?v=1929"></script>
+    <script src="firebase-v1685.js?v=1929"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.928</p>
+                <p class="font-bold text-gray-800">v1.929</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.928 ／ 歷次成績表格與單元顯示設定">v1.928</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.929 ／ 歷次成績三行精簡表格">v1.929</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1099,7 +1099,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.928";
+    document.title = "教師後台 - 題庫系統 v1.929";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
