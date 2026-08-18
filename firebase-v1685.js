@@ -166,7 +166,7 @@
     publicConfigCache = snap.exists ? (snap.data() || {}) : {
       title: "動態題庫測驗",
       titleColor: "sky",
-      version: "v1.932"
+      version: "v1.933"
     };
     return publicConfigCache;
   }

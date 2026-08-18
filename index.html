@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1932"></script>
-    <script src="firebase-v1685.js?v=1932"></script>
+    <script src="firebase-config.js?v=1933"></script>
+    <script src="firebase-v1685.js?v=1933"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -476,25 +476,51 @@
                     <div id="my-completion-bar" class="h-2.5 rounded-full transition-all duration-700 bg-sky-400" style="width:0%"></div>
                 </div>
             </div>
-            <div id="current-required-board" class="hidden mt-3 border border-amber-100 bg-amber-50/50 rounded-xl p-3">
-                <div class="flex items-center justify-between gap-3 mb-2">
-                    <div>
-                        <p class="text-sm font-bold text-amber-800">目前尚待完成</p>
-                        <p class="text-xs text-amber-600 mt-0.5">只列出老師目前指定、尚未達標的單元</p>
-                    </div>
-                    <span id="current-required-count" class="text-xs font-bold bg-white text-amber-700 border border-amber-200 rounded-full px-2.5 py-1"></span>
-                </div>
-                <div id="current-required-list" class="space-y-2"></div>
+        </div>
+
+        <!-- 第一層：選擇科目 -->
+        <div id="subject-selection-view">
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">選擇科目</p>
+            <div id="subject-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+        </div>
+
+        <!-- 第二層：科目首頁 -->
+        <div id="subject-home-view" class="hidden">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <button type="button" onclick="showSubjectSelection()" class="text-xs bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-1.5 font-bold hover:bg-slate-200 transition">← 返回科目選擇</button>
+                <span id="selected-subject-label" class="text-sm text-sky-600 font-bold text-right"></span>
             </div>
+            <button type="button" id="current-required-board" onclick="openCurrentRequiredView()" class="hidden w-full text-left border border-amber-200 bg-amber-50 hover:bg-amber-100 rounded-xl p-4 transition mb-5">
+                <div class="flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold text-amber-800">目前尚待完成</p>
+                        <p id="current-required-summary" class="text-xs text-amber-600 mt-0.5">查看老師目前指定、尚未達標的單元</p>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <span id="current-required-count" class="text-xs font-bold bg-white text-amber-700 border border-amber-200 rounded-full px-2.5 py-1"></span>
+                        <span class="text-amber-600 font-black" aria-hidden="true">›</span>
+                    </div>
+                </div>
+            </button>
+            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">全部章節</p>
+            <div id="topic-list" class="space-y-2"></div>
         </div>
-        <!-- 科目與章節列表（renderTopics 注入）-->
-        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">選擇科目</p>
-        <div id="subject-list" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5"></div>
-        <div class="flex items-center justify-between mb-3">
-            <p class="text-xs font-bold text-gray-400 uppercase tracking-wider">選擇章節</p>
-            <span id="selected-subject-label" class="text-xs text-sky-600 font-semibold"></span>
+
+        <!-- 第三層：目前尚待完成 -->
+        <div id="current-required-view" class="hidden">
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <button type="button" onclick="showSubjectHome()" class="text-xs bg-slate-100 text-slate-600 border border-slate-200 rounded-full px-3 py-1.5 font-bold hover:bg-slate-200 transition">← 返回科目首頁</button>
+                <span id="current-required-subject-label" class="text-sm text-sky-600 font-bold text-right"></span>
+            </div>
+            <div class="flex items-center justify-between gap-3 mb-3">
+                <div>
+                    <p class="text-base font-bold text-amber-800">目前尚待完成</p>
+                    <p class="text-xs text-amber-600 mt-0.5">只列出此科目目前指定、尚未達標的單元</p>
+                </div>
+                <span id="current-required-view-count" class="text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full px-2.5 py-1"></span>
+            </div>
+            <div id="current-required-list" class="space-y-2"></div>
         </div>
-        <div id="topic-list" class="space-y-2"></div>
     </section>
 
     <!-- 測驗題數設定 -->
@@ -744,7 +770,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.932 ／ 目前必須完成單元看板">v1.932</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.933 ／ 科目三層導覽">v1.933</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1472,8 +1498,8 @@ async function enterMainMenuAfterLogin() {
     if (allowedSubjectSet.size && !topicsData.length) {
         throw new Error("學生名單的科目ID沒有對應到已發布題庫，請聯絡老師重新同步名單");
     }
-    const availableSubjectIds = [...new Set(topicsData.map(topic => String(topic.subjectId || "").trim()).filter(Boolean))];
-    selectedSubjectKey = availableSubjectIds.length === 1 ? availableSubjectIds[0] : "";
+    selectedSubjectKey = "";
+    topicMenuView = "subjects";
     allQuestionsForMenu = [];
     completionSettings = result.completionSettings || completionSettings;
     allClassList = result.allClassList || [];
@@ -1642,6 +1668,7 @@ let isRetryMode        = false;
 let currentQuizCountsTowardScore = false;
 let loggedInAdminName  = "";
 let selectedSubjectKey = "";
+let topicMenuView      = "subjects"; // subjects → subject → required
 let pendingQuizTopic   = "";
 let pendingQuizTopicMeta = null;
 let allQuestionsForMenu = [];
@@ -1898,12 +1925,51 @@ async function handleLogin() {
 // ══════════════════════════════════════════════
 //  3. 單元列表
 // ══════════════════════════════════════════════
+function getTopicSubjectKey(topic) {
+    return String(topic?.subjectId || topic?.subjectName || topic?.subject || "default").trim() || "default";
+}
+
+function getTopicSubjectName(topic) {
+    const key = getTopicSubjectKey(topic);
+    return String(topic?.subjectName || topic?.subject || (key === "default" ? "全部科目" : key)).trim();
+}
+
+function applyTopicMenuView() {
+    const hasSubject = Boolean(selectedSubjectKey);
+    if (!hasSubject) topicMenuView = "subjects";
+    if (!['subjects', 'subject', 'required'].includes(topicMenuView)) topicMenuView = hasSubject ? "subject" : "subjects";
+    document.getElementById("subject-selection-view")?.classList.toggle("hidden", topicMenuView !== "subjects");
+    document.getElementById("subject-home-view")?.classList.toggle("hidden", topicMenuView !== "subject");
+    document.getElementById("current-required-view")?.classList.toggle("hidden", topicMenuView !== "required");
+}
+
+function showSubjectSelection() {
+    selectedSubjectKey = "";
+    topicMenuView = "subjects";
+    renderTopics();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function showSubjectHome() {
+    topicMenuView = selectedSubjectKey ? "subject" : "subjects";
+    renderTopics();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function openCurrentRequiredView() {
+    if (!selectedSubjectKey) return;
+    topicMenuView = "required";
+    renderTopics();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function renderTopics() {
     const div = document.getElementById("topic-list");
     if (!div) { console.error("❌ topic-list 元素不存在"); return; }
     div.innerHTML = "";
     const subjectList = document.getElementById("subject-list");
     const subjectLabel = document.getElementById("selected-subject-label");
+    const requiredSubjectLabel = document.getElementById("current-required-subject-label");
     if (subjectList) subjectList.innerHTML = "";
 
     console.log("📚 renderTopics 呼叫，topicsData 長度：", topicsData?.length,
@@ -1916,7 +1982,10 @@ function renderTopics() {
         if (fallbackTopics.length > 0) {
             topicsData = fallbackTopics.map(name => ({ name, color: "#0ea5e9" }));
         } else {
-            div.innerHTML = '<p class="text-gray-400 text-center py-8 text-sm">📭 尚無分類資料，請重新整理頁面</p>';
+            if (subjectList) subjectList.innerHTML = '<p class="text-gray-400 text-center py-8 text-sm sm:col-span-2">📭 尚無分類資料，請重新整理頁面</p>';
+            selectedSubjectKey = "";
+            topicMenuView = "subjects";
+            applyTopicMenuView();
             return;
         }
     }
@@ -1942,8 +2011,6 @@ function renderTopics() {
         return "#ef4444";
     };
 
-    const getSubjectKey = (t) => String(t.subjectId || t.subjectName || t.subject || "default").trim() || "default";
-    const getSubjectName = (t) => String(t.subjectName || t.subject || (getSubjectKey(t) === "default" ? "全部科目" : getSubjectKey(t))).trim();
     const getTopicChapterName = (t) => {
         const raw = String(t.chapterName || t.chapter || t.category || t.name || "未分類").trim();
         if (raw.includes("｜")) return raw.split("｜").pop().trim();
@@ -1953,7 +2020,7 @@ function renderTopics() {
     const naturalCompare = (a, b) => String(a || "").localeCompare(String(b || ""), "zh-TW", { numeric: true, sensitivity: "base" });
 
     const topics = [...topicsData].sort((a, b) => {
-        const s = naturalCompare(getSubjectName(a), getSubjectName(b));
+        const s = naturalCompare(getTopicSubjectName(a), getTopicSubjectName(b));
         if (s !== 0) return s;
         const c = naturalCompare(chapterSortValue(a), chapterSortValue(b));
         if (c !== 0) return c;
@@ -1962,13 +2029,16 @@ function renderTopics() {
 
     const subjectMap = {};
     topics.forEach(t => {
-        const key = getSubjectKey(t);
-        if (!subjectMap[key]) subjectMap[key] = { key, name: getSubjectName(t), count: 0, topics: [] };
+        const key = getTopicSubjectKey(t);
+        if (!subjectMap[key]) subjectMap[key] = { key, name: getTopicSubjectName(t), count: 0, topics: [] };
         subjectMap[key].count += Number(t.count || 0);
         subjectMap[key].topics.push(t);
     });
     const subjects = Object.values(subjectMap).sort((a, b) => naturalCompare(a.name, b.name));
-    if (selectedSubjectKey && !subjectMap[selectedSubjectKey]) selectedSubjectKey = "";
+    if (selectedSubjectKey && !subjectMap[selectedSubjectKey]) {
+        selectedSubjectKey = "";
+        topicMenuView = "subjects";
+    }
 
     if (subjectList) {
         subjectList.innerHTML = subjects.map(s => {
@@ -1981,23 +2051,24 @@ function renderTopics() {
         subjectList.querySelectorAll(".subject-btn").forEach(btn => {
             btn.onclick = () => {
                 selectedSubjectKey = btn.dataset.subject || "";
+                topicMenuView = "subject";
                 renderTopics();
+                window.scrollTo({ top: 0, behavior: "smooth" });
             };
         });
     }
 
     const selectedSubject = selectedSubjectKey ? subjectMap[selectedSubjectKey] : null;
-    if (subjectLabel) subjectLabel.textContent = selectedSubject ? selectedSubject.name : "請先選擇科目";
+    if (subjectLabel) subjectLabel.textContent = selectedSubject?.name || "";
+    if (requiredSubjectLabel) requiredSubjectLabel.textContent = selectedSubject?.name || "";
+    applyTopicMenuView();
 
     if (!selectedSubject) {
-        div.innerHTML = `
-            <div class="rounded-xl border border-dashed border-sky-200 bg-sky-50/60 text-sky-700 px-4 py-8 text-center">
-                <div class="text-lg font-bold mb-1">請先點選上方科目</div>
-                <div class="text-sm text-sky-500">選定科目後，才會顯示該科目的章節、完成度與測驗入口。</div>
-            </div>
-        `;
         return;
     }
+
+    renderCurrentRequiredBoard(myProgressCache);
+    if (topicMenuView === "required") return;
 
     // 取得各分類完成度資訊（含平均每題用時）
     const compMap = {};
@@ -3611,18 +3682,21 @@ function renderCurrentRequiredBoard(data) {
     const board = document.getElementById("current-required-board");
     const list = document.getElementById("current-required-list");
     const count = document.getElementById("current-required-count");
-    if (!board || !list || !count) return;
-    const passScore = Number(data?.passScore || completionSettings?.passScore || 80);
-    const configuredIds = new Set(data?.completionTopicIds || completionSettings?.completionTopicIds || []);
-    const configuredNames = new Set(data?.completionTopics || completionSettings?.completionTopics || []);
-    const requiredTopics = (topicsData || []).filter(topic =>
-        (topic?.topicId && configuredIds.has(topic.topicId)) || configuredNames.has(topic?.name)
-    );
-    if (!requiredTopics.length) {
+    const viewCount = document.getElementById("current-required-view-count");
+    const summary = document.getElementById("current-required-summary");
+    if (!board || !list || !count || !viewCount || !summary) return;
+    if (!selectedSubjectKey) {
         board.classList.add("hidden");
         list.innerHTML = "";
         return;
     }
+    const passScore = Number(data?.passScore || completionSettings?.passScore || 80);
+    const configuredIds = new Set(data?.completionTopicIds || completionSettings?.completionTopicIds || []);
+    const configuredNames = new Set(data?.completionTopics || completionSettings?.completionTopics || []);
+    const requiredTopics = (topicsData || []).filter(topic =>
+        getTopicSubjectKey(topic) === selectedSubjectKey
+        && ((topic?.topicId && configuredIds.has(topic.topicId)) || configuredNames.has(topic?.name))
+    );
 
     const progressValues = Object.values(data?.topicProgress || {});
     const details = Array.isArray(data?.details) ? data.details : [];
@@ -3638,11 +3712,15 @@ function renderCurrentRequiredBoard(data) {
         return { topic, topicName, best, passed };
     });
     const unfinished = rows.filter(row => !row.passed);
-    const completed = rows.length - unfinished.length;
-    count.textContent = `未完成 ${unfinished.length} / ${rows.length}`;
+    const allCompleted = unfinished.length === 0;
+    count.textContent = allCompleted ? "已全部完成" : `待完成 ${unfinished.length}`;
+    viewCount.textContent = `${unfinished.length} 個`;
+    summary.textContent = allCompleted
+        ? "目前指定單元已全部完成，點此查看"
+        : `還有 ${unfinished.length} 個單元尚未達標，點此查看`;
     board.classList.remove("hidden");
 
-    if (!unfinished.length) {
+    if (allCompleted) {
         list.innerHTML = '<div class="rounded-lg bg-green-50 border border-green-100 text-green-700 text-sm font-bold px-3 py-3">✓ 目前指定單元已全部完成</div>';
         return;
     }
