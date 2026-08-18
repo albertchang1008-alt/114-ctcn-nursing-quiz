@@ -522,3 +522,37 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 學生端、後台、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.926`。
 - `index.html` 與 `admin.html` inline JavaScript 語法檢查通過；40 題倒數換算與逾時自動送出測試通過。
 - 尚需在 iPhone Safari／Chrome 實機確認兩行標題與倒數版面。
+
+# v1.927 - 2026-08-18
+
+## 歷次成績長單元名稱
+
+- 歷次成績清單移除單行 `truncate`，改為最多兩行顯示，超過兩行才省略。
+- 清單左側標題區加入 `flex: 1` 與 `min-width: 0`，確保右側分數不會將單元名稱壓縮到消失。
+- 歷次成績明細頁套用相同的兩行標題規則，分數區保持 `shrink-0`。
+- 完整單元名稱保留在 `title` 屬性。
+
+## 版本與驗收
+
+- 學生端、後台、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.927`。
+- `index.html`、`admin.html` 與 `Code.gs` 語法檢查通過。
+- 尚需在 iPhone Safari／Chrome 實機確認歷次成績清單及明細的兩行標題版面。
+
+# v1.928 - 2026-08-18
+
+## 歷次成績表格
+
+- 將學生端歷次成績卡片清單改為語意化表格，顯示單元、作答時間、答對題數、用時與成績。
+- 單元名稱允許完整換行，表格在手機畫面可橫向滑動。
+- 表格列保留滑鼠點擊與鍵盤 Enter／空白鍵開啟逐題明細。
+
+## 後台顯示設定
+
+- 新增歷次成績單元勾選清單，與完成度計算單元分開管理。
+- GAS 系統設定新增 `score_history_topics`、`score_history_topic_ids` 的讀寫與 Firebase 同步。
+- 學生端依 topicId 優先、單元名稱相容舊紀錄進行篩選；空白設定代表全部顯示。
+
+## 版本與驗收
+
+- 學生端、後台、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.928`。
+- 尚需部署 GAS 與前端，後台儲存並同步設定後，以學生帳號確認表格及單元篩選。

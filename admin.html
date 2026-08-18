@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1926"></script>
-    <script src="firebase-v1685.js?v=1926"></script>
+    <script src="firebase-config.js?v=1928"></script>
+    <script src="firebase-v1685.js?v=1928"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.926</p>
+                <p class="font-bold text-gray-800">v1.928</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.926 ／ 測驗倒數與長單元名稱雙行顯示">v1.926</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.928 ／ 歷次成績表格與單元顯示設定">v1.928</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -806,6 +806,21 @@
                     <div id="settings-topic-list" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1"></div>
                 </div>
 
+                <!-- 歷次成績顯示單元 -->
+                <div class="mb-6 border border-emerald-100 rounded-xl p-4 bg-emerald-50/40">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div>
+                            <h3 class="text-sm font-bold text-gray-800">歷次成績顯示單元</h3>
+                            <p class="text-xs text-gray-400 mt-1">學生的歷次成績表格只顯示勾選單元；全部未勾選時顯示所有單元。</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="settingsSelectAllScoreHistory(true)" class="text-xs text-emerald-600 hover:text-emerald-800 underline">全選</button>
+                            <button onclick="settingsSelectAllScoreHistory(false)" class="text-xs text-gray-400 hover:text-gray-600 underline">全不選（顯示全部）</button>
+                        </div>
+                    </div>
+                    <div id="settings-score-history-topic-list" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1"></div>
+                </div>
+
                 <!-- 班級勾選 -->
                 <div class="mb-6">
                     <div class="flex items-center justify-between mb-3">
@@ -1084,7 +1099,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.926";
+    document.title = "教師後台 - 題庫系統 v1.928";
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
@@ -3492,6 +3507,21 @@ function renderSettingsTab(currentSettings) {
                 <span class="text-sm text-gray-700">${topic.name}</span>
             </label>`).join("");
 
+    const checkedScoreHistoryTopics = new Set(currentSettings?.scoreHistoryTopics || []);
+    const checkedScoreHistoryTopicIds = new Set(currentSettings?.scoreHistoryTopicIds || []);
+    const scoreHistoryTopicContainer = document.getElementById("settings-score-history-topic-list");
+    if (scoreHistoryTopicContainer) {
+        scoreHistoryTopicContainer.innerHTML = allTopics.length === 0
+            ? '<p class="text-gray-400 text-sm col-span-2">請先載入分析數據（切換至其他 Tab 後再回來）</p>'
+            : allTopics.map(topic => `
+                <label class="flex items-start gap-2 border border-emerald-100 bg-white rounded-lg px-3 py-2 hover:bg-emerald-50 cursor-pointer">
+                    <input type="checkbox" class="settings-score-history-topic-cb w-4 h-4 mt-0.5 rounded accent-emerald-500"
+                        value="${topic.name}" data-topic-id="${topic.topicId}"
+                        ${checkedScoreHistoryTopicIds.has(topic.topicId) || checkedScoreHistoryTopics.has(topic.name) ? "checked" : ""}>
+                    <span class="text-sm text-gray-700 break-words min-w-0">${topic.name}</span>
+                </label>`).join("");
+    }
+
     // ── 班級勾選 ──
     const checkedClasses = new Set(currentSettings?.completionClasses || []);
     const classNameOf = value => String(
@@ -3523,6 +3553,9 @@ function settingsSelectAll(checked) {
 function settingsSelectAllClasses(checked) {
     document.querySelectorAll(".settings-class-cb").forEach(cb => cb.checked = checked);
 }
+function settingsSelectAllScoreHistory(checked) {
+    document.querySelectorAll(".settings-score-history-topic-cb").forEach(cb => cb.checked = checked);
+}
 
 async function saveCompletionSettings() {
     const passScore = parseInt(document.getElementById("settings-pass-score").value) || 80;
@@ -3534,6 +3567,8 @@ async function saveCompletionSettings() {
     }));
     const topics    = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.value);
     const topicIds  = [...document.querySelectorAll(".settings-topic-cb:checked")].map(cb => cb.dataset.topicId).filter(Boolean);
+    const scoreHistoryTopics = [...document.querySelectorAll(".settings-score-history-topic-cb:checked")].map(cb => cb.value);
+    const scoreHistoryTopicIds = [...document.querySelectorAll(".settings-score-history-topic-cb:checked")].map(cb => cb.dataset.topicId).filter(Boolean);
     const classes   = [...document.querySelectorAll(".settings-class-cb:checked")].map(cb => cb.value);
     const emailDomainRestrictionEnabled = !!document.getElementById("settings-email-restrict-enabled")?.checked;
     const allowedEmailDomains = String(document.getElementById("settings-allowed-domains")?.value || "")
@@ -3551,6 +3586,8 @@ async function saveCompletionSettings() {
             completionTopics: topics,
             completionTopicIds: topicIds,
             completionClasses: classes,
+            scoreHistoryTopics,
+            scoreHistoryTopicIds,
             emailDomainRestrictionEnabled,
             allowedEmailDomains,
             allowedEmails,

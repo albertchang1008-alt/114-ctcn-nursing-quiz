@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.926 slim
+// Google Apps Script — 題庫系統 v1.928 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.926";
+const APP_VERSION = "v1.928";
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -180,6 +180,8 @@ function readSettings(ss) {
     completionTopics: splitCsv(setting(["completion_topics"], "")),
     completionTopicIds: splitCsv(setting(["completion_topic_ids"], "")),
     completionClasses: splitCsv(setting(["completion_classes"], "")),
+    scoreHistoryTopics: splitCsv(setting(["score_history_topics"], "")),
+    scoreHistoryTopicIds: splitCsv(setting(["score_history_topic_ids"], "")),
     deadline: setting(["deadline"], ""),
     systemTitle: setting(["systemTitle", "system_title"], ""),
     titleColor: setting(["titleColor", "title_color"], ""),
@@ -220,6 +222,8 @@ function handleSaveSettings(payload) {
   upsert("completion_topics", (payload.completionTopics || []).join(","));
   upsert("completion_topic_ids", (payload.completionTopicIds || []).join(","));
   upsert("completion_classes", (payload.completionClasses || []).join(","));
+  upsert("score_history_topics", (payload.scoreHistoryTopics || []).join(","));
+  upsert("score_history_topic_ids", (payload.scoreHistoryTopicIds || []).join(","));
   upsert("allowed_email_enabled", payload.emailDomainRestrictionEnabled ? "TRUE" : "FALSE");
   upsert("email_domain_restriction_enabled", payload.emailDomainRestrictionEnabled ? "true" : "false");
   upsert("allowed_email_domains", (payload.allowedEmailDomains || []).join(","));
