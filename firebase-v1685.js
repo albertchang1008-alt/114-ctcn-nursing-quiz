@@ -166,14 +166,18 @@
     publicConfigCache = snap.exists ? (snap.data() || {}) : {
       title: "動態題庫測驗",
       titleColor: "sky",
-      version: "v1.930"
+      version: "v1.932"
     };
     return publicConfigCache;
   }
 
-  async function loadAuthenticatedSettings() {
+  async function loadAuthenticatedSettings(forceRefresh) {
     if (!init()) throw new Error("Firebase 尚未啟用");
     await ensureSignedIn();
+    if (forceRefresh) {
+      settingsCache = null;
+      boot = null;
+    }
     if (settingsCache) return settingsCache;
     var c = cfg.collections || {};
     var snap = await docPath(c.settings || "system/main").get();

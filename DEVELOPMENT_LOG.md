@@ -586,3 +586,44 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 
 - 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.930`。
 - 需驗證達標、未達標、未納入完成度，以及抽題練習不改變正式完成狀態等情境。
+
+# v1.931 - 2026-08-18
+
+## 手動更新完成度看板
+
+- 後台新增科目／單元篩選的全學生完成度表格與四張摘要卡。
+- Google Sheet 名單負責補入未作答學生，Firebase `studentProgress` 負責最高有效分數。
+- 使用手動「更新資料」觸發 collection `get()`，不建立即時 listener；前端篩選不增加讀取。
+- 教師帳號必須具有 Firebase `admin: true` Custom Claim 才能讀取全體 `studentProgress`。
+- 按未完成優先排序，再依班級與學號排列，方便老師找出尚未練習學生。
+
+## 完成度一致性
+
+- 入口、歷次成績與完成度看板均以目前後台 `passScore` 對 `best` 重算。
+- 不再以學生文件內可能因門檻變更而過期的 `passed` 布林值作為顯示依據。
+- 後台調整達標門檻後，學生重新載入入口、老師重新更新看板即可套用，不需等待再次作答。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.931`。
+- 本版不需要新增 Firestore index；既有 rules 已允許 `admin` 讀取 `studentProgress`。
+
+# v1.932 - 2026-08-18
+
+## 動態課程進度
+
+- 後台完成度勾選區改稱「目前必須完成的單元」，作為老師可隨課程進度調整的唯一清單。
+- 未勾選單元視為尚未納入目前課程進度，不進入學生與老師完成度分母。
+- 學生既有 `topicProgress.best` 永久保留；清單調整只改變目前要求範圍。
+
+## 學生尚待完成看板
+
+- 入口新增精簡待完成清單，只列目前必要且未達標單元。
+- 顯示最高有效分數或尚無完整成績、距達標差距，以及測驗／閃卡快捷入口。
+- 完成度摘要改稱「截至目前完成度」，避免誤解為全學期最終完成度。
+- Firebase 設定讀取新增 force refresh；每次學生登入重新取得 `system/main`，同頁切換帳號也不沿用舊設定。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.932`。
+- 需驗證老師調整清單並同步後，學生重新登入會看到最新待完成單元。
