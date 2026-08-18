@@ -82,8 +82,8 @@ function makeSummary(batch, documentName, topicMap) {
     topicDisplayName: batch.topic || "未分類",
     mode: batch.mode || "完整測驗",
     isRetryMode: !!batch.isRetryMode,
-    countsTowardBest: !batch.isRetryMode,
-    countsTowardCompletion: !batch.isRetryMode,
+    countsTowardBest: !batch.isRetryMode && batch.countsTowardScore === true,
+    countsTowardCompletion: !batch.isRetryMode && batch.countsTowardScore === true,
     attempt: Number(batch.attempt || 1),
     score: Number(batch.score || 0),
     correctCount: Number(batch.correctCount || 0),
@@ -130,7 +130,9 @@ function mergeProgress(existing, summaries, settings) {
     if (!summary.countsTowardBest || summary.topicId === "topic_comprehensive") return;
     const legacy = detailMap.get(summary.topicDisplayName) || {};
     const current = topicProgress[summary.topicId] || {};
-    const oldBest = current.best ?? legacy.best;
+    const oldBest = current.bestCountsTowardScore === true
+      ? current.best
+      : (legacy.bestCountsTowardScore === true ? legacy.best : null);
     const best = oldBest === null || oldBest === undefined ? summary.score : Math.max(Number(oldBest) || 0, summary.score);
     const item = {
       ...current,
@@ -142,6 +144,7 @@ function mergeProgress(existing, summaries, settings) {
       best,
       lastScore: summary.score,
       passed: best >= passScore,
+      bestCountsTowardScore: true,
       avgSec: summary.avgAnswerSec,
       lastBatchId: summary.batchId,
       lastAnsweredAt: summary.answeredAt,
@@ -210,7 +213,7 @@ async function commitProgress(items) {
 (async () => {
   const batches = await loadBatches();
   const topicMap = await loadTopicMap();
-  const eligible = batches.filter(item => item.data.studentId && !item.data.isRetryMode);
+  const eligible = batches.filter(item => item.data.studentId && !item.data.isRetryMode && item.data.countsTowardScore === true);
   const summaries = eligible.map(item => makeSummary(item.data, item.name, topicMap));
   const unresolved = summaries.filter(item => item.topicId.startsWith("legacy_"));
   console.log(`answerBatches：${batches.length}；可回補正式成績：${summaries.length}；舊 topicId fallback：${unresolved.length}`);

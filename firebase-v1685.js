@@ -681,6 +681,7 @@
         passed: !!d.passed,
         avgSec: d.avgSec === undefined ? null : d.avgSec,
         lastScore: d.lastScore === undefined ? null : d.lastScore,
+        bestCountsTowardScore: d.bestCountsTowardScore === true,
         lastAnsweredAtText: d.lastAnsweredAtText || ""
       };
       if (!topicProgress[legacyId]) topicProgress[legacyId] = Object.assign({}, detailMap[d.topic]);
@@ -708,12 +709,15 @@
       }
       var d = detailMap[s.topic];
       var oldProgress = topicProgress[s.topicId] || {};
-      var previousBest = oldProgress.best !== undefined && oldProgress.best !== null ? oldProgress.best : d.best;
+      var previousBest = oldProgress.bestCountsTowardScore === true
+        ? oldProgress.best
+        : (d.bestCountsTowardScore === true ? d.best : null);
       d.topicId = s.topicId;
       d.topicName = s.topicName || d.topicName || s.topic;
       d.lastScore = s.score;
       d.best = previousBest === null || previousBest === undefined ? s.score : Math.max(Number(previousBest) || 0, s.score);
       d.passed = (Number(d.best) || 0) >= settings.passScore;
+      d.bestCountsTowardScore = true;
       if (s.avgSec !== null && s.avgSec !== undefined) d.avgSec = s.avgSec;
       d.lastAnsweredAtText = batch.clientCreatedAt || new Date().toISOString();
       topicProgress[s.topicId] = {
@@ -725,6 +729,7 @@
         best: d.best,
         lastScore: s.score,
         passed: d.passed,
+        bestCountsTowardScore: true,
         avgSec: d.avgSec,
         lastBatchId: batch.batchId,
         lastAnsweredAt: nowField(),
@@ -820,8 +825,8 @@
       topicDisplayName: batch.topic,
       mode: batch.mode,
       isRetryMode: batch.isRetryMode,
-      countsTowardBest: !batch.isRetryMode,
-      countsTowardCompletion: !batch.isRetryMode,
+      countsTowardBest: !!batch.countsTowardScore,
+      countsTowardCompletion: !!batch.countsTowardScore,
       attempt: batch.attempt,
       score: batch.score,
       correctCount: batch.correctCount,
@@ -865,6 +870,9 @@
       wrongCount: Number(payload.wrongCount) || 0,
       duration: Number(payload.duration) || 0,
       isRetryMode: !!payload.isRetryMode,
+      // 由題數選擇流程明確標記；抽題練習不更新最高分。
+      // 閃卡固定使用全部題目，因此會傳入 true。
+      countsTowardScore: !payload.isRetryMode && payload.countsTowardScore === true,
       token: payload.token || "",
       ip: payload.ip || "",
       questionBankVersion: payload.questionBankVersion || "",
@@ -909,7 +917,7 @@
     var summaryRef = db.collection(c.scoreSummaries || "scoreSummaries").doc(batchId);
     var progressRef = batch.studentId ? db.collection(c.studentProgress || "studentProgress").doc(batch.studentId) : null;
     var settings = !batch.isRetryMode && batch.studentId ? await resolveCompletionSettings(payload) : null;
-    var attemptSummaries = !batch.isRetryMode ? summarizeCurrentAttemptByTopic(batch, details) : [];
+    var attemptSummaries = batch.countsTowardScore ? summarizeCurrentAttemptByTopic(batch, details) : [];
 
     var transactionResult = await db.runTransaction(async function(writer) {
       // 所有讀取必須在 transaction 寫入前完成；batchId 也作為離線補送的冪等鍵。
@@ -920,7 +928,8 @@
       writer.set(answerRef, batch, { merge: true });
       opCount++;
 
-      if (!batch.isRetryMode) {
+      // 成績歷程只收「全部題目」測驗與閃卡；抽題練習只保留在 answerBatches。
+      if (batch.countsTowardScore) {
         writer.set(summaryRef, buildScoreSummary(batch, details), { merge: true });
         opCount++;
       }

@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.925 slim
+// Google Apps Script — 題庫系統 v1.926 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.925";
+const APP_VERSION = "v1.926";
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -38,7 +38,7 @@ function doPost(e) {
     if (action === "syncStudentsV1925") return handleSyncStudentsV1925(payload);
     if (action === "syncFirebaseV19" || action === "syncFirebaseV1685" || action === "syncAllFirebaseV1925") return handleSyncFirebaseV19(payload);
     if (action === "getFirebaseBootstrap") return jsonResponse({ status: "ok", data: buildFirebasePayloadV19() });
-    if (action === "validateStudentEmailsV19") return jsonResponse(validateStudentEmailsV19());
+    if (action === "validateStudentEmailsV19") return handleValidateStudentRosterV1925();
     if (action === "getSyncStatusV19") return handleGetSyncStatusV19();
     if (action === "syncFirestoreScoresToSheetsV19") return handleSyncFirestoreScoresToSheetsV19(payload);
     if (action === "migrateWrongQuestionsV2") return handleMigrateWrongQuestionsV2();
@@ -83,6 +83,8 @@ function handleGetTeacherDataSlim() {
       campus: s.campus || "",
       seatNo: s.seatNo || "",
       email: s.email || "",
+      subjectId: s.subjectId || "",
+      subjectIds: s.subjectIds || [],
       role: s.role || "student",
       enabled: s.enabled !== false
     };
@@ -91,6 +93,8 @@ function handleGetTeacherDataSlim() {
       name: s.name,
       class: s.className,
       className: s.className,
+      subjectId: s.subjectId || "",
+      subjectIds: s.subjectIds || [],
       attempts: []
     };
     if (!classMap[s.className]) classMap[s.className] = { "class": s.className, studentCount: 0, total: 0, correct: 0, rate: 0, topicBreakdown: [] };
@@ -442,6 +446,15 @@ function emailKey(email) {
   return email ? encodeURIComponent(email).replace(/\./g, "%2E") : "";
 }
 
+function splitSubjectIdsV1925(value) {
+  var seen = {};
+  return String(value || "").split(/[,，;；\n]+/).map(function(s) { return s.trim(); }).filter(function(id) {
+    if (!id || seen[id]) return false;
+    seen[id] = true;
+    return true;
+  });
+}
+
 function readStudentsForFirebaseV19(ss) {
   var sheet = ss.getSheetByName(SHEET_STUDENTS);
   if (!sheet || sheet.getLastRow() <= 1) return [];
@@ -455,6 +468,7 @@ function readStudentsForFirebaseV19(ss) {
   var cCampus = findColIdx(headers, ["校區", "campus"]);
   var cSeat = findColIdx(headers, ["座號", "seatNo", "seat"]);
   var cEmail = findColIdx(headers, ["Email", "email", "E-mail", "電子郵件", "信箱", "學校email", "Google帳號", "Google信箱"]);
+  var cSubjectId = findColIdx(headers, ["科目ID", "科目 Id", "subjectId", "subject_id", "subjectIds", "subject_ids"]);
   var cRole = findColIdx(headers, ["角色", "role"]);
   var cEnabled = findColIdx(headers, ["啟用狀態", "啟用", "enabled", "狀態", "status"]);
   var out = [];
@@ -463,6 +477,7 @@ function readStudentsForFirebaseV19(ss) {
     if (!sid) continue;
     var email = normalizeEmail(getCell(rows[i], cEmail));
     var enabledRaw = getCell(rows[i], cEnabled);
+    var subjectIds = splitSubjectIdsV1925(getCell(rows[i], cSubjectId));
     var role = getCell(rows[i], cRole) || "student";
     if (/^(teacher|admin|教師|老師|管理員)$/i.test(role)) continue;
     out.push({
@@ -473,6 +488,8 @@ function readStudentsForFirebaseV19(ss) {
       seatNo: getCell(rows[i], cSeat),
       email: email,
       emailKey: emailKey(email),
+      subjectId: subjectIds[0] || "",
+      subjectIds: subjectIds,
       role: role,
       enabled: enabledRaw ? !/^(停用|否|false|disabled|0)$/i.test(enabledRaw) : true,
       updatedAtText: localNow()
@@ -481,15 +498,27 @@ function readStudentsForFirebaseV19(ss) {
   return out;
 }
 
-function validateStudentEmailsV19(optionalStudents) {
+function validateStudentEmailsV19(optionalStudents, optionalValidSubjectIds) {
   var students = Array.isArray(optionalStudents) ? optionalStudents : readStudentsForFirebaseV19(SpreadsheetApp.getActiveSpreadsheet());
+  var validateSubjects = Array.isArray(optionalValidSubjectIds);
+  var validSubjectMap = {};
+  (optionalValidSubjectIds || []).forEach(function(id) { validSubjectMap[String(id)] = true; });
   var emailMap = {};
   var idMap = {};
   var blankEmail = [];
   var invalidEmails = [];
+  var blankSubjectIds = [];
+  var invalidSubjectIds = [];
   students.forEach(function(s) {
     if (!idMap[s.studentId]) idMap[s.studentId] = [];
     idMap[s.studentId].push(s);
+    var subjectIds = Array.isArray(s.subjectIds) ? s.subjectIds : splitSubjectIdsV1925(s.subjectId);
+    if (!subjectIds.length) {
+      blankSubjectIds.push({ studentId: s.studentId, name: s.name, className: s.className });
+    } else if (validateSubjects) {
+      var unknown = subjectIds.filter(function(id) { return !validSubjectMap[id]; });
+      if (unknown.length) invalidSubjectIds.push({ studentId: s.studentId, name: s.name, subjectIds: unknown });
+    }
     if (!s.email) {
       blankEmail.push({ studentId: s.studentId, name: s.name, className: s.className });
       return;
@@ -508,14 +537,54 @@ function validateStudentEmailsV19(optionalStudents) {
     return { studentId: k, students: idMap[k].map(function(s) { return { name: s.name, className: s.className, email: s.email }; }) };
   });
   return {
-    status: duplicateEmails.length || duplicateIds.length || invalidEmails.length ? "error" : "ok",
+    status: duplicateEmails.length || duplicateIds.length || invalidEmails.length || blankSubjectIds.length || invalidSubjectIds.length ? "error" : "ok",
     total: students.length,
     usable: students.filter(function(s) { return s.email && s.enabled !== false; }).length,
     blankEmail: blankEmail,
     duplicateEmails: duplicateEmails,
     duplicateIds: duplicateIds,
-    invalidEmails: invalidEmails
+    invalidEmails: invalidEmails,
+    blankSubjectIds: blankSubjectIds,
+    invalidSubjectIds: invalidSubjectIds,
+    validSubjectIds: optionalValidSubjectIds || []
   };
+}
+
+function publishedSubjectIdsV1925(projectId, token) {
+  var system = firebaseGetDocumentV1920(projectId, token, "system/main") || {};
+  var map = {};
+  (system.topics || []).forEach(function(topic) {
+    var id = String(topic && topic.subjectId || "").trim();
+    if (id) map[id] = true;
+  });
+  return Object.keys(map).sort(function(a, b) { return a.localeCompare(b, "zh-TW", { numeric: true }); });
+}
+
+function studentRosterValidationMessageV1925(check) {
+  var parts = [];
+  var duplicateEmails = check.duplicateEmails || [];
+  var duplicateIds = check.duplicateIds || [];
+  var invalidEmails = check.invalidEmails || [];
+  var blankSubjectIds = check.blankSubjectIds || [];
+  var invalidSubjectIds = check.invalidSubjectIds || [];
+  if (duplicateEmails.length) parts.push("重複 email " + duplicateEmails.length + " 組");
+  if (invalidEmails.length) parts.push("email 格式錯誤 " + invalidEmails.length + " 筆");
+  if (duplicateIds.length) parts.push("重複學號 " + duplicateIds.length + " 組");
+  if (blankSubjectIds.length) {
+    parts.push("科目ID空白 " + blankSubjectIds.length + " 位（例如：" + blankSubjectIds.slice(0, 3).map(function(s) { return s.studentId; }).join("、") + "）");
+  }
+  if (invalidSubjectIds.length) {
+    var examples = invalidSubjectIds.slice(0, 3).map(function(s) { return s.studentId + "=" + (s.subjectIds || []).join(","); }).join("；");
+    parts.push("科目ID未對應已發布題庫 " + invalidSubjectIds.length + " 位（例如：" + examples + "）");
+  }
+  return parts.join("；") || "資料格式不正確";
+}
+
+function handleValidateStudentRosterV1925() {
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  var validSubjectIds = projectId ? publishedSubjectIdsV1925(projectId, firebaseAccessToken()) : null;
+  return jsonResponse(validateStudentEmailsV19(null, validSubjectIds));
 }
 
 function buildQuestionSyncDataV1925(ss) {
@@ -870,9 +939,11 @@ function syncSettingsCoreV1925(ctx) {
 
 function syncStudentsCoreV1925(ctx) {
   var data = buildStudentSyncDataV1925(ctx.ss);
-  var emailCheck = validateStudentEmailsV19(data.students);
-  if (emailCheck.duplicateEmails.length || emailCheck.duplicateIds.length || emailCheck.invalidEmails.length) {
-    throw new Error("學生名單 email / 學號檢查未通過，已停止同步");
+  var validSubjectIds = publishedSubjectIdsV1925(ctx.projectId, ctx.token);
+  if (!validSubjectIds.length) throw new Error("Firebase 尚無已發布的科目ID，請先執行「同步題庫」");
+  var emailCheck = validateStudentEmailsV19(data.students, validSubjectIds);
+  if (emailCheck.status !== "ok") {
+    throw new Error("學生名單檢查未通過：" + studentRosterValidationMessageV1925(emailCheck) + "。已發布科目ID：" + validSubjectIds.join("、"));
   }
   var studentsChanged = ctx.props.getProperty("LAST_STUDENT_SYNC_HASH") !== data.studentHash;
   var writes = [];

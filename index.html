@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1925"></script>
-    <script src="firebase-v1685.js?v=1925"></script>
+    <script src="firebase-config.js?v=1926"></script>
+    <script src="firebase-v1685.js?v=1926"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -730,7 +730,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.925 ／ 成績摘要與完成度修正">v1.925</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.926 ／ 測驗倒數與長單元名稱雙行顯示">v1.926</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1624,6 +1624,8 @@ let quizSession        = [];   // 當前測驗題目（含學生作答）
 let currentQuestionIndex = 0;
 let attemptCount       = 0;
 let isRetryMode        = false;
+// 只有「全部題目」測驗與涵蓋全部題目的閃卡會更新單元最高分。
+let currentQuizCountsTowardScore = false;
 let loggedInAdminName  = "";
 let selectedSubjectKey = "";
 let pendingQuizTopic   = "";
@@ -2056,11 +2058,13 @@ function renderTopics() {
         row.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;gap:10px;">
                 <div style="flex:1;min-width:0;overflow:hidden;">
-                    <div class="chapter-title" style="font-size:14px;font-weight:700;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(displayTitle)}${timeLabel}</div>
+                    <div class="chapter-title" title="${escapeHtml(displayTitle)}"
+                        style="font-size:14px;font-weight:700;color:#1e293b;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-height:2.9em;">${escapeHtml(displayTitle)}</div>
                     <div class="chapter-meta" style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b;flex-wrap:wrap;">
                         <span>已做 ${attemptedCount} / ${totalQuestions} 題</span>
                         <span>完成度 ${completePct}%</span>
                         ${comp?.best != null ? `<span>最高 ${comp.best} 分</span>` : `<span>尚未測驗</span>`}
+                        ${timeLabel}
                     </div>
                     <div class="chapter-track" style="height:5px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:7px;">
                         <div class="chapter-fill" style="height:5px;width:${completePct}%;background:${hex};border-radius:999px;"></div>
@@ -2232,6 +2236,7 @@ async function loadAndStartQuiz(topic, requestedCount = 20) {
     if (!(await verifySessionOnce())) return;
     currentSelectedTopic = topic;
     isRetryMode   = false;
+    currentQuizCountsTowardScore = requestedCount === "all" && topic !== "綜合練習";
     attemptCount++;
     hide("topic-section");
     // 完成度已整合進 topic-section，進入答題時 topic-section 本身就隱藏
@@ -2342,6 +2347,7 @@ function startFullQuiz(topic) {
 async function startRetry() {
     if (!(await verifySessionOnce())) return;
     isRetryMode = true;
+    currentQuizCountsTowardScore = false;
     attemptCount++;
     // 完成度已整合進 topic-section
     const srcs = quizSession
@@ -2750,6 +2756,8 @@ function showResults(scoreCorrect) {
     const total     = quizSession.length;
     const wrong     = total - scoreCorrect;
     const scoreCalc = Math.round((scoreCorrect / total) * 100);
+    // 固定本次作答的採計狀態，避免送出期間畫面狀態改變影響結果。
+    const countsTowardScore = currentQuizCountsTowardScore;
 
     document.getElementById("result-name").textContent    = studentName;
     document.getElementById("result-id").textContent      = studentId;
@@ -2757,7 +2765,8 @@ function showResults(scoreCorrect) {
     document.getElementById("result-correct").textContent = scoreCorrect;
     document.getElementById("result-wrong").textContent   = wrong;
     const timeoutLabel = quizTimedOut ? "（時間到自動交卷）" : "";
-    document.getElementById("tag-mode-top").textContent   = `${isRetryMode?"錯題重做":"完整測驗"}${timeoutLabel} — ${currentSelectedTopic}`;
+    const resultMode = isRetryMode ? "錯題重做" : (countsTowardScore ? "全部題目測驗" : "抽題練習");
+    document.getElementById("tag-mode-top").textContent   = `${resultMode}${timeoutLabel} — ${currentSelectedTopic}`;
     document.getElementById("tag-attempt").textContent    = `第 ${attemptCount} 次測驗`;
 
     showResultMessage(scoreCalc);
@@ -2776,13 +2785,15 @@ function showResults(scoreCorrect) {
     renderReviewList();
 
     if (isRetryMode) {
-        document.getElementById("save-status").textContent = "錯題重做不計入成績紀錄";
+        document.getElementById("save-status").textContent = "錯題重做不計入單元成績";
         document.getElementById("save-status").className   = "text-sm text-gray-400 mb-4 font-medium";
         return;
     }
 
     // 交卷後才一次送出 Firebase，答題中不產生讀寫
-    document.getElementById("save-status").textContent = "正在一次送出成績至 Firebase...";
+    document.getElementById("save-status").textContent = countsTowardScore
+        ? "正在一次送出成績至 Firebase..."
+        : "正在儲存抽題練習紀錄（不列入單元成績）...";
     document.getElementById("save-status").className   = "text-sm text-blue-600 mb-4 font-medium";
 
     const details = quizSession.map(q => ({
@@ -2837,16 +2848,19 @@ function showResults(scoreCorrect) {
         ip: clientIP,
         details,
         isRetryMode,
+        countsTowardScore,
         ...getStudentCompletionScope()
     }, "save-status").then(res => {
         if (res.status === "ok") {
             const saveStatus = document.getElementById("save-status");
             if (saveStatus) {
-                saveStatus.textContent = "✅ 已列入成績紀錄（Firebase 已寫入，Google Sheet 會定時同步）";
+                saveStatus.textContent = countsTowardScore
+                    ? "✅ 已列入單元成績（Firebase 已寫入，Google Sheet 會定時同步）"
+                    : "✅ 抽題練習紀錄已儲存，不列入單元成績";
                 saveStatus.className = "text-sm text-green-600 mb-4 font-medium";
             }
             loadMyCompletion();
-            updateLocalProgressAfterSubmit(scoreCalc);
+            updateLocalProgressAfterSubmit(scoreCalc, countsTowardScore);
         } else if (res.status === "queued") {
             const saveStatus = document.getElementById("save-status");
             if (saveStatus) {
@@ -2863,14 +2877,14 @@ function showResults(scoreCorrect) {
     });
 }
 
-function updateLocalProgressAfterSubmit(scoreCalc) {
+function updateLocalProgressAfterSubmit(scoreCalc, countsTowardScore = false) {
     if (!myProgressCache || isRetryMode) return;
     if (!myProgressCache.attemptedQuestions) myProgressCache.attemptedQuestions = {};
     quizSession.forEach((q, idx) => {
         myProgressCache.attemptedQuestions[getQuestionKey(q, idx)] = true;
     });
     myProgressCache.attemptedQuestionCount = Object.keys(myProgressCache.attemptedQuestions).length;
-    if (currentSelectedTopic !== "綜合練習") {
+    if (countsTowardScore && currentSelectedTopic !== "綜合練習") {
         const passScore = myProgressCache.passScore || 60;
         const topicMeta = topicsData.find(t => t.name === currentSelectedTopic) || {};
         let topicDetail = (myProgressCache.details || []).find(d => d.topic === currentSelectedTopic);
@@ -2879,9 +2893,11 @@ function updateLocalProgressAfterSubmit(scoreCalc) {
             myProgressCache.details.push(topicDetail);
         }
         topicDetail.lastScore = scoreCalc;
-        if (topicDetail.best === null || topicDetail.best === undefined || scoreCalc > Number(topicDetail.best || 0)) {
+        // 舊資料未標明是否為全題測驗，不能再拿來壓過新制的有效成績。
+        if (topicDetail.bestCountsTowardScore !== true || topicDetail.best === null || topicDetail.best === undefined || scoreCalc > Number(topicDetail.best || 0)) {
             topicDetail.best = scoreCalc;
         }
+        topicDetail.bestCountsTowardScore = true;
         topicDetail.passed = Number(topicDetail.best || 0) >= passScore;
     }
     renderMyCompletion(myProgressCache);
@@ -3203,6 +3219,7 @@ function showFlashcardDone() {
             ip: clientIP,
             details: fcAnswerLog,
             isRetryMode: false,
+            countsTowardScore: true,
             ...getStudentCompletionScope()
         }).then(res => {
             const fcStatus = document.getElementById("fc-save-status");

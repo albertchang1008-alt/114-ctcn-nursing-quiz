@@ -478,10 +478,12 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 ## 成績資料層
 
 - 新增 `scoreSummaries/{batchId}` 輕量逐次摘要，與完整 `answerBatches` 同批寫入。
+- 正式 `nurse-4981a` 已發布新版 Firestore rules 與全部 scoreSummaries 複合索引（含 uid + answeredAt）。
 - 修正 `getTeacherData` 將 Google Sheet 學生名單回傳為空物件的問題；未作答學生現在也會出現在後台班級名單。
 - 學生名單同時有「修課班級」與「班級」時優先採用修課班級，並排除 teacher/admin 角色進入學生同步。
 - 學生名單新增 `科目ID` 關聯；支援逗號分隔多科目，並以 Firebase 已發布題庫的 subjectId 驗證。
 - 每位學生的完成度母項目改為「全域完成度設定 × 學生科目ID」交集；學生端與教師後台均排除其他科目的章節。
+- 學生歷次成績查詢改用 Firebase Auth `uid + answeredAt`，與 owner rules 直接對齊；新增複合索引及可辨識的權限／索引／網路錯誤訊息。
 - 重寫後台 Firebase 同步：題庫、設定、學生名單各有獨立 action 與按鈕；完整同步保留但需再次確認。
 - 學生名單同步只讀「學生名單」，設定同步只讀系統設定與題庫首列標題，只有題庫同步會建立題庫 hash、章節 manifest 與 chunks。
 - 離線佇列預先產生並保留 `batchId`，避免重送重複紀錄。
@@ -499,3 +501,24 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 學生只能讀自己的摘要與完整作答；教師全班監聽要求 `admin` Custom Claim。
 - `studentAttempts` 不再允許任意已登入使用者讀取。
 - 新增摘要查詢複合索引與預設 dry-run 的歷史回補工具。
+
+# v1.926 - 2026-08-18
+
+## 測驗倒數
+
+- 每次測驗依實際出題數以每題 60 秒計算上限，題目載入完成後才開始計時。
+- 頂端顯示本次測驗倒數；剩餘 20% 顯示警示，最後 60 秒顯示紅色。
+- 時間到自動交卷並允許未作答題送出；截止後即使首次送出失敗，也只能重新送出，不能修改答案。
+- 手動交卷停止計時並保存實際秒數；逾時交卷保存完整時間上限。
+
+## 手機章節名稱
+
+- 章節名稱由單行 `nowrap` 省略改為最多兩行顯示，超過兩行才截斷。
+- 平均每題秒數移到章節資訊列，避免與長標題競爭寬度。
+- 完整標題保留在 `title` 屬性，桌面端可輔助查看。
+
+## 版本與驗收
+
+- 學生端、後台、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.926`。
+- `index.html` 與 `admin.html` inline JavaScript 語法檢查通過；40 題倒數換算與逾時自動送出測試通過。
+- 尚需在 iPhone Safari／Chrome 實機確認兩行標題與倒數版面。
