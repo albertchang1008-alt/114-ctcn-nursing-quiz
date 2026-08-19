@@ -683,3 +683,18 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 
 - 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.935`。
 - 詳細資料流與驗收方式記錄於 `ADMIN_GAS_PROXY_V1935.md`。
+
+# v1.936 - 2026-08-19
+
+## 完成度單元複選
+
+- 將原生單選下拉改為核取式複選器，提供全選、清除、單選及多選操作。
+- 科目切換時自動選取該科目全部設定單元；選單標籤顯示全部、單元名稱或已選數量。
+- 完成度、狀態分類、摘要卡及尚缺單元均依選取集合即時重算。
+- 單選時保留最高有效分數欄；複選時以達標數／選取數為主要資訊。
+- 複選只使用既有 GAS 快取資料，不新增 API 請求或 Firestore reads。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.936`。
+- 需以桌機及手機驗證複選器操作、科目切換與完成度計算。

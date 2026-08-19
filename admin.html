@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1935"></script>
-    <script src="firebase-v1685.js?v=1935"></script>
+    <script src="firebase-config.js?v=1936"></script>
+    <script src="firebase-v1685.js?v=1936"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.935</p>
+                <p class="font-bold text-gray-800">v1.936</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.935 ／ GAS 安全代理">v1.935</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.936 ／ 完成度單元複選">v1.936</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -667,16 +667,27 @@
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
                     <label class="block">
                         <span class="block text-xs font-semibold text-gray-500 mb-1">科目</span>
-                        <select id="completion-live-subject" onchange="prepareCompletionLiveTopics(); renderAdminCompletionLive()" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                        <select id="completion-live-subject" onchange="handleCompletionSubjectChange()" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
                             <option value="">選擇科目</option>
                         </select>
                     </label>
-                    <label class="block">
+                    <div class="block relative" id="completion-live-topic-control">
                         <span class="block text-xs font-semibold text-gray-500 mb-1">單元</span>
-                        <select id="completion-live-topic" onchange="renderAdminCompletionLive()" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
-                            <option value="ALL">全部設定單元</option>
-                        </select>
-                    </label>
+                        <button type="button" id="completion-live-topic-button" onclick="toggleCompletionTopicMenu(event)" aria-haspopup="true" aria-expanded="false"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-3">
+                            <span id="completion-live-topic-label" class="truncate">全部設定單元</span><span class="text-gray-400">⌄</span>
+                        </button>
+                        <div id="completion-live-topic-menu" class="hidden absolute z-30 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl p-3 max-h-80 overflow-y-auto" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-gray-100">
+                                <span id="completion-live-topic-count" class="text-xs text-gray-500">已選 0 個</span>
+                                <div class="flex gap-1.5">
+                                    <button type="button" onclick="selectAllCompletionTopics()" class="text-xs font-bold text-sky-700 bg-sky-50 rounded-md px-2 py-1">全選</button>
+                                    <button type="button" onclick="clearCompletionTopics()" class="text-xs font-bold text-gray-600 bg-gray-100 rounded-md px-2 py-1">清除</button>
+                                </div>
+                            </div>
+                            <div id="completion-live-topic-options" class="space-y-1"></div>
+                        </div>
+                    </div>
                     <label class="block">
                         <span class="block text-xs font-semibold text-gray-500 mb-1">搜尋學生</span>
                         <input id="completion-live-search" type="search" oninput="renderAdminCompletionLive()" placeholder="姓名、學號或班級…" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
@@ -1169,7 +1180,7 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.935";
+    document.title = "教師後台 - 題庫系統 v1.936";
     restoreAdminSessionFromStorage();
 });
 document.addEventListener("visibilitychange", () => {
@@ -2925,7 +2936,7 @@ async function doAdminLogin() {
         // 登入成功
         loggedInAdminName = res.adminName || adminId;
         adminSessionToken = String(res.adminSessionToken || "");
-        if (!adminSessionToken) throw new Error("GAS 未回傳安全 session，請先部署 v1.935 GAS。 ");
+        if (!adminSessionToken) throw new Error("GAS 未回傳安全 session，請先部署 v1.936 GAS。");
         persistAdminSession();
         closeAdminModal();
         openTeacherPortal();
@@ -2960,6 +2971,9 @@ async function closeTeacherPortal() {
     recentAnswersLoaded = false;
     recentAnswersOpen = false;
     recentAnswersItems = [];
+    completionLiveAvailableTopics = [];
+    completionLiveSelectedTopicKeys.clear();
+    completionLivePreparedSubject = null;
     document.getElementById("teacher-portal").style.display = "none";
     document.body.style.overflow = "";
 }
@@ -3998,6 +4012,9 @@ let adminCompletionTrafficMeta = null;
 let recentAnswersLoaded = false;
 let recentAnswersOpen = false;
 let recentAnswersItems = [];
+let completionLiveAvailableTopics = [];
+let completionLiveSelectedTopicKeys = new Set();
+let completionLivePreparedSubject = null;
 
 function normalizeCompletionTopicIdentity(value) {
     return String(value || "").normalize("NFKC").replace(/[－–—]/g, "-").replace(/\s+/g, "").toLowerCase();
@@ -4064,18 +4081,92 @@ function completionDashboardTopicKey(topic) {
     return `compat:${completionCompatibilityKey(completionDashboardTopicName(topic))}`;
 }
 
-function prepareCompletionLiveTopics() {
-    const subjectKey = document.getElementById("completion-live-subject")?.value || "";
-    const select = document.getElementById("completion-live-topic");
-    if (!select) return;
-    const previous = select.value || "ALL";
-    const topics = completionDashboardTopics()
-        .filter(topic => !subjectKey || completionDashboardSubjectKey(topic) === subjectKey)
-        .sort((a, b) => completionDashboardTopicName(a).localeCompare(completionDashboardTopicName(b), "zh-TW", { numeric: true }));
-    const validKeys = new Set(topics.map(completionDashboardTopicKey));
-    select.innerHTML = '<option value="ALL">全部設定單元</option>' + topics.map(topic => `<option value="${escapeAdminScore(completionDashboardTopicKey(topic))}">${escapeAdminScore(completionDashboardTopicName(topic))}</option>`).join("");
-    select.value = previous === "ALL" || validKeys.has(previous) ? previous : "ALL";
+function handleCompletionSubjectChange() {
+    prepareCompletionLiveTopics(true);
+    renderAdminCompletionLive();
 }
+
+function prepareCompletionLiveTopics(resetSelection = false) {
+    const subjectKey = document.getElementById("completion-live-subject")?.value || "";
+    const topicsByKey = new Map();
+    completionDashboardTopics()
+        .filter(topic => !subjectKey || completionDashboardSubjectKey(topic) === subjectKey)
+        .sort((a, b) => completionDashboardTopicName(a).localeCompare(completionDashboardTopicName(b), "zh-TW", { numeric: true }))
+        .forEach(topic => topicsByKey.set(completionDashboardTopicKey(topic), topic));
+    completionLiveAvailableTopics = [...topicsByKey.values()];
+    const availableKeys = new Set(completionLiveAvailableTopics.map(completionDashboardTopicKey));
+    const subjectChanged = completionLivePreparedSubject !== subjectKey;
+    if (resetSelection || subjectChanged || completionLivePreparedSubject === null) {
+        completionLiveSelectedTopicKeys = new Set(availableKeys);
+    } else {
+        completionLiveSelectedTopicKeys = new Set([...completionLiveSelectedTopicKeys].filter(key => availableKeys.has(key)));
+    }
+    completionLivePreparedSubject = subjectKey;
+    renderCompletionTopicMenu();
+}
+
+function renderCompletionTopicMenu() {
+    const options = document.getElementById("completion-live-topic-options");
+    const label = document.getElementById("completion-live-topic-label");
+    const count = document.getElementById("completion-live-topic-count");
+    if (!options || !label || !count) return;
+    options.innerHTML = completionLiveAvailableTopics.map(topic => {
+        const key = completionDashboardTopicKey(topic);
+        const checked = completionLiveSelectedTopicKeys.has(key);
+        return `<label class="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-sky-50 cursor-pointer">
+            <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-sky-600" data-topic-key="${escapeAdminScore(key)}" ${checked ? "checked" : ""}
+                onchange="toggleCompletionTopicSelection(this.dataset.topicKey,this.checked)">
+            <span class="text-sm text-gray-700 leading-snug">${escapeAdminScore(completionDisplayName(completionDashboardTopicName(topic)))}</span>
+        </label>`;
+    }).join("") || '<p class="text-xs text-gray-400 text-center py-4">此科目沒有完成度單元</p>';
+    const selected = completionLiveSelectedTopicKeys.size;
+    const total = completionLiveAvailableTopics.length;
+    count.textContent = `已選 ${selected} / ${total} 個`;
+    if (selected === 0) label.textContent = "請選擇單元";
+    else if (selected === total) label.textContent = "全部設定單元";
+    else if (selected === 1) {
+        const topic = completionLiveAvailableTopics.find(item => completionLiveSelectedTopicKeys.has(completionDashboardTopicKey(item)));
+        label.textContent = completionDisplayName(completionDashboardTopicName(topic));
+    } else label.textContent = `已選 ${selected} 個單元`;
+}
+
+function toggleCompletionTopicMenu(event) {
+    event?.stopPropagation();
+    const menu = document.getElementById("completion-live-topic-menu");
+    const button = document.getElementById("completion-live-topic-button");
+    if (!menu || !button) return;
+    const willOpen = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !willOpen);
+    button.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeCompletionTopicMenu() {
+    document.getElementById("completion-live-topic-menu")?.classList.add("hidden");
+    document.getElementById("completion-live-topic-button")?.setAttribute("aria-expanded", "false");
+}
+
+function toggleCompletionTopicSelection(key, checked) {
+    if (checked) completionLiveSelectedTopicKeys.add(key);
+    else completionLiveSelectedTopicKeys.delete(key);
+    renderCompletionTopicMenu();
+    renderAdminCompletionLive();
+}
+
+function selectAllCompletionTopics() {
+    completionLiveSelectedTopicKeys = new Set(completionLiveAvailableTopics.map(completionDashboardTopicKey));
+    renderCompletionTopicMenu();
+    renderAdminCompletionLive();
+}
+
+function clearCompletionTopics() {
+    completionLiveSelectedTopicKeys.clear();
+    renderCompletionTopicMenu();
+    renderAdminCompletionLive();
+}
+
+document.addEventListener("click", event => {
+    if (!document.getElementById("completion-live-topic-control")?.contains(event.target)) closeCompletionTopicMenu();
+});
 
 function stopAdminCompletionDashboard() {
     // 本看板沒有 onSnapshot；保留函式讓頁籤生命週期明確，離開時不需解除監聽。
@@ -4175,10 +4266,9 @@ function renderAdminCompletionLive() {
     }
 
     const allSubjectTopics = completionDashboardTopics().filter(topic => completionDashboardSubjectKey(topic) === subjectKey);
-    const topicKey = document.getElementById("completion-live-topic")?.value || "ALL";
-    const selectedTopics = topicKey === "ALL" ? allSubjectTopics : allSubjectTopics.filter(topic => completionDashboardTopicKey(topic) === topicKey);
+    const selectedTopics = completionLiveAvailableTopics.filter(topic => completionLiveSelectedTopicKeys.has(completionDashboardTopicKey(topic)));
     if (!selectedTopics.length) {
-        status.textContent = "此科目尚未設定完成度單元";
+        status.textContent = allSubjectTopics.length ? "請至少選擇一個單元" : "此科目尚未設定完成度單元";
         status.classList.remove("hidden");
         wrap.classList.add("hidden");
         summary.innerHTML = "";
@@ -4212,7 +4302,7 @@ function renderAdminCompletionLive() {
             const total = selectedTopics.length;
             const pct = total ? Math.round(completed / total * 100) : 0;
             const state = completed === total && total > 0 ? "completed" : (attempted > 0 ? "progress" : "not-started");
-            const best = topicKey === "ALL" ? null : topicResults[0]?.best;
+            const best = selectedTopics.length === 1 ? topicResults[0]?.best : null;
             const missingNames = topicResults.filter(result => !result.passed)
                 .map(result => completionDisplayName(completionDashboardTopicName(result.topic)));
             const updatedMillis = Math.max(0, ...topicResults.map(result => result.updatedMillis), completionDashboardTimeMillis(progress?.updatedAt), completionDashboardTimeMillis(progress?.updatedAtText));
@@ -4250,8 +4340,8 @@ function renderAdminCompletionLive() {
     };
     list.innerHTML = rows.map(row => {
         const [stateLabel, stateClass] = stateView[row.state];
-        const completionText = topicKey === "ALL" ? `${row.completed} / ${row.total}（${row.pct}%）` : (row.state === "completed" ? "1 / 1（100%）" : "0 / 1（0%）");
-        const bestText = topicKey === "ALL" ? "—" : (row.best === null || row.best === undefined ? "—" : `${Number(row.best)} 分`);
+        const completionText = selectedTopics.length > 1 ? `${row.completed} / ${row.total}（${row.pct}%）` : (row.state === "completed" ? "1 / 1（100%）" : "0 / 1（0%）");
+        const bestText = selectedTopics.length > 1 ? "—" : (row.best === null || row.best === undefined ? "—" : `${Number(row.best)} 分`);
         const missingText = row.missingNames.length ? row.missingNames.join("、") : "—";
         return `<tr class="hover:bg-gray-50">
             <td class="px-4 py-3"><p class="font-bold text-gray-800">${escapeAdminScore(row.name)}</p><p class="text-xs text-gray-400">${escapeAdminScore(row.studentId)}</p></td>

@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.935 slim
+// Google Apps Script — 題庫系統 v1.936 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,7 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.935";
+const APP_VERSION = "v1.936";
 const ADMIN_SESSION_TTL_SECONDS = 21600;
 const ADMIN_LOGIN_WINDOW_SECONDS = 600;
 const ADMIN_LOGIN_MAX_FAILURES = 5;
