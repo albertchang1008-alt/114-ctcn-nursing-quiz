@@ -660,3 +660,26 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 
 - 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.934`。
 - 完整證據、對照表與後續預防方案記錄於 `CH08_COMPATIBILITY_DECISION_2026-08-19.md`。
+
+# v1.935 - 2026-08-19
+
+## GAS 安全代理與認證
+
+- `adminLogin` 成功後核發 6 小時滑動期限的隨機 session token，使用 GAS Script Cache 保存。
+- 除登入外的管理 GAS actions 統一驗證 token；登出立即撤銷，登入失敗採每帳號 10 分鐘 5 次限制。
+- Firebase OAuth access token 加入 50 分鐘伺服器快取，避免每次代理請求重取 OAuth token。
+- 完成度看板改由 GAS 使用服務帳號讀取 `studentProgress`，前端不再要求 Firebase admin claim。
+
+## 低流量完成度與最近做答
+
+- 完成度代理使用 field mask 排除 attemptedQuestions、錯題、email、UID 與 processed batch IDs。
+- 完成度與最近 100 筆做答各自使用 120 秒共用快取；強制更新才繞過快取。
+- 最近做答採獨立展開式懶載入，只回傳摘要，不傳逐題 `detailsJson`。
+- 看板狀態列顯示資料時間、快取狀態、Firestore reads、來源文件數及約略傳輸 KB。
+- 管理端補入 Ch08 相容碼、尚缺單元欄，並讓摘要卡跟隨搜尋結果計算。
+- 未修改 `studentProgress`、`answerBatches`、`scoreSummaries` 或其他歷史資料。
+
+## 版本與部署
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.935`。
+- 詳細資料流與驗收方式記錄於 `ADMIN_GAS_PROXY_V1935.md`。

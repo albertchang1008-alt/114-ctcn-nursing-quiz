@@ -1,4 +1,4 @@
-// Google Apps Script — 題庫系統 v1.934 slim
+// Google Apps Script — 題庫系統 v1.935 slim
 // 角色：Google Sheet 是老師維護入口；學生端與運算工作都在 Firebase。
 // 保留功能：
 // 1. 題庫 / 系統設定 / 可選學生名單 → Firestore
@@ -10,7 +10,13 @@ const SHEET_QUESTIONS = "題庫";
 const SHEET_SETTINGS = "系統設定";
 const SHEET_STUDENTS = "學生名單";
 const SHEET_SCORES = "成績紀錄";
-const APP_VERSION = "v1.934";
+const APP_VERSION = "v1.935";
+const ADMIN_SESSION_TTL_SECONDS = 21600;
+const ADMIN_LOGIN_WINDOW_SECONDS = 600;
+const ADMIN_LOGIN_MAX_FAILURES = 5;
+const COMPLETION_DASHBOARD_CACHE_SECONDS = 120;
+const COMPLETION_DASHBOARD_CACHE_MAX_BYTES = 90000;
+const RECENT_ANSWERS_CACHE_SECONDS = 120;
 
 const SCORE_HEADERS = [
   "時間戳記", "學號", "姓名", "測驗單元", "測驗模式", "第幾次",
@@ -31,8 +37,13 @@ function doPost(e) {
   try {
     var payload = parsePayload(e);
     var action = String(payload.action || "");
-    if (action === "saveSettings") return handleSaveSettings(payload);
     if (action === "adminLogin") return handleAdminLogin(payload);
+    var adminSession = requireAdminSessionV1935(payload);
+    if (action === "verifyAdminSession") return jsonResponse({ status: "ok", verified: true, adminName: adminSession.adminName, expiresAt: adminSession.expiresAt });
+    if (action === "adminLogout") return handleAdminLogoutV1935(payload);
+    if (action === "getCompletionDashboardV1935") return handleGetCompletionDashboardV1935(payload);
+    if (action === "getRecentAnswersV1935") return handleGetRecentAnswersV1935(payload);
+    if (action === "saveSettings") return handleSaveSettings(payload);
     if (action === "syncQuestionBankV1925") return handleSyncQuestionBankV1925(payload);
     if (action === "syncSettingsV1925") return handleSyncSettingsV1925(payload);
     if (action === "syncStudentsV1925") return handleSyncStudentsV1925(payload);
@@ -48,7 +59,11 @@ function doPost(e) {
       message: "GAS slim 已移除此 action：" + action + "。學生端請使用 Firebase；後台分析請改讀 Firestore 匯出資料。"
     });
   } catch (err) {
-    return jsonResponse({ status: "error", message: err.message, stack: err.stack || "" });
+    if (err && err.code === "AUTH_REQUIRED") {
+      return jsonResponse({ status: "auth_required", message: err.message || "管理員登入已失效，請重新登入。" });
+    }
+    console.error("GAS 管理 action 失敗：", err && err.stack ? err.stack : err);
+    return jsonResponse({ status: "error", message: err && err.message ? err.message : "伺服器處理失敗" });
   }
 }
 
@@ -58,14 +73,91 @@ function handleAdminLogin(payload) {
   if (!sheet || sheet.getLastRow() <= 1) return jsonResponse({ status: "error", verified: false, message: "尚未建立管理人名單" });
   var adminId = String(payload.adminId || "").trim();
   var adminPassword = String(payload.adminPassword || "").trim();
+  var cache = CacheService.getScriptCache();
+  var failureKey = adminLoginFailureKeyV1935(adminId);
+  var failureCount = Number(cache.get(failureKey) || 0);
+  if (failureCount >= ADMIN_LOGIN_MAX_FAILURES) {
+    return jsonResponse({ status: "rate_limited", verified: false, message: "登入失敗次數過多，請 10 分鐘後再試。" });
+  }
   var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(3, sheet.getLastColumn())).getValues();
   for (var i = 0; i < rows.length; i++) {
     var id = rows[i][0] ? String(rows[i][0]).trim() : "";
     var pwd = rows[i][1] ? String(rows[i][1]).trim() : "";
     var name = rows[i][2] ? String(rows[i][2]).trim() : id;
-    if (id === adminId && pwd === adminPassword) return jsonResponse({ status: "ok", verified: true, adminName: name });
+    if (id === adminId && pwd === adminPassword) {
+      cache.remove(failureKey);
+      var session = createAdminSessionV1935(adminId, name);
+      return jsonResponse({
+        status: "ok",
+        verified: true,
+        adminName: name,
+        adminSessionToken: session.token,
+        expiresAt: session.expiresAt,
+        expiresInSeconds: ADMIN_SESSION_TTL_SECONDS
+      });
+    }
   }
+  cache.put(failureKey, String(failureCount + 1), ADMIN_LOGIN_WINDOW_SECONDS);
   return jsonResponse({ status: "ok", verified: false, message: "帳號或密碼錯誤" });
+}
+
+function adminDigestV1935(value) {
+  var bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, String(value || ""), Utilities.Charset.UTF_8);
+  return Utilities.base64EncodeWebSafe(bytes).replace(/=+$/g, "");
+}
+
+function adminSessionCacheKeyV1935(token) {
+  return "admin_session_v1935_" + adminDigestV1935(token);
+}
+
+function adminLoginFailureKeyV1935(adminId) {
+  return "admin_login_fail_v1935_" + adminDigestV1935(String(adminId || "").toLowerCase());
+}
+
+function createAdminSessionV1935(adminId, adminName) {
+  var token = [Utilities.getUuid(), Utilities.getUuid(), String(Date.now())].join("").replace(/-/g, "");
+  var now = Date.now();
+  var session = {
+    adminId: String(adminId || ""),
+    adminName: String(adminName || adminId || "管理員"),
+    issuedAt: new Date(now).toISOString(),
+    lastSeenAt: new Date(now).toISOString(),
+    expiresAt: new Date(now + ADMIN_SESSION_TTL_SECONDS * 1000).toISOString()
+  };
+  CacheService.getScriptCache().put(adminSessionCacheKeyV1935(token), JSON.stringify(session), ADMIN_SESSION_TTL_SECONDS);
+  return { token: token, expiresAt: session.expiresAt };
+}
+
+function authRequiredErrorV1935(message) {
+  var err = new Error(message || "管理員登入已失效，請重新登入。");
+  err.code = "AUTH_REQUIRED";
+  return err;
+}
+
+function requireAdminSessionV1935(payload) {
+  var token = String(payload && payload.adminSessionToken || "").trim();
+  if (!token) throw authRequiredErrorV1935("缺少管理員 session，請重新登入。");
+  var cache = CacheService.getScriptCache();
+  var key = adminSessionCacheKeyV1935(token);
+  var raw = cache.get(key);
+  if (!raw) throw authRequiredErrorV1935("管理員 session 已過期，請重新登入。");
+  var session;
+  try { session = JSON.parse(raw); }
+  catch (err) {
+    cache.remove(key);
+    throw authRequiredErrorV1935("管理員 session 無效，請重新登入。");
+  }
+  var now = Date.now();
+  session.lastSeenAt = new Date(now).toISOString();
+  session.expiresAt = new Date(now + ADMIN_SESSION_TTL_SECONDS * 1000).toISOString();
+  cache.put(key, JSON.stringify(session), ADMIN_SESSION_TTL_SECONDS);
+  return session;
+}
+
+function handleAdminLogoutV1935(payload) {
+  var token = String(payload && payload.adminSessionToken || "").trim();
+  if (token) CacheService.getScriptCache().remove(adminSessionCacheKeyV1935(token));
+  return jsonResponse({ status: "ok", message: "已安全登出" });
 }
 
 function handleGetTeacherDataSlim() {
@@ -1024,6 +1116,144 @@ function handleGetSyncStatusV19() {
   });
 }
 
+function completionTopicCompactV1935(item, fallbackTopicId) {
+  item = item || {};
+  var topic = String(item.topic || item.topicName || "").trim();
+  var topicId = String(item.topicId || fallbackTopicId || "").trim();
+  if (!topic && !topicId) return null;
+  return {
+    topic: topic,
+    topicName: String(item.topicName || topic).trim(),
+    topicId: topicId,
+    best: item.best === undefined ? null : item.best,
+    lastScore: item.lastScore === undefined ? null : item.lastScore,
+    avgSec: item.avgSec === undefined ? null : item.avgSec,
+    lastAnsweredAt: item.lastAnsweredAt || item.lastAnsweredAtText || ""
+  };
+}
+
+function compactStudentProgressV1935(doc) {
+  var progress = parseFirebaseFields(doc.fields || {});
+  var topicMap = {};
+  function mergeTopic(item, fallbackTopicId) {
+    var compact = completionTopicCompactV1935(item, fallbackTopicId);
+    if (!compact) return;
+    var nameKey = String(compact.topic || compact.topicName || "").normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+    var key = nameKey ? "name:" + nameKey : "id:" + compact.topicId;
+    var previous = topicMap[key];
+    if (!previous) {
+      topicMap[key] = compact;
+      return;
+    }
+    var previousBest = previous.best === null || previous.best === undefined ? null : Number(previous.best);
+    var nextBest = compact.best === null || compact.best === undefined ? null : Number(compact.best);
+    if (previousBest === null || (nextBest !== null && nextBest > previousBest)) {
+      previous.best = compact.best;
+      previous.avgSec = compact.avgSec;
+    }
+    if (compact.lastScore !== null && compact.lastScore !== undefined) previous.lastScore = compact.lastScore;
+    if (String(compact.lastAnsweredAt || "") > String(previous.lastAnsweredAt || "")) previous.lastAnsweredAt = compact.lastAnsweredAt;
+  }
+  (Array.isArray(progress.details) ? progress.details : []).forEach(function(item) { mergeTopic(item, item && item.topicId); });
+  Object.keys(progress.topicProgress || {}).forEach(function(topicId) { mergeTopic(progress.topicProgress[topicId], topicId); });
+  return {
+    studentId: String(progress.studentId || doc.name.split("/").pop()),
+    updatedAt: progress.updatedAt || progress.updatedAtText || "",
+    topics: Object.keys(topicMap).map(function(key) { return topicMap[key]; })
+  };
+}
+
+function completionDashboardCacheResponseV1935(base, cacheHit, reads, cacheStored) {
+  var generatedMillis = new Date(base.generatedAt || 0).getTime();
+  return jsonResponse({
+    status: "ok",
+    generatedAt: base.generatedAt,
+    cacheHit: !!cacheHit,
+    cacheStored: cacheStored !== false,
+    cacheAgeSeconds: generatedMillis ? Math.max(0, Math.floor((Date.now() - generatedMillis) / 1000)) : 0,
+    firestoreDocumentsRead: Number(reads || 0),
+    sourceDocumentCount: Number(base.sourceDocumentCount || 0),
+    payloadBytes: Number(base.payloadBytes || 0),
+    students: base.students || []
+  });
+}
+
+function handleGetCompletionDashboardV1935(payload) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "completion_dashboard_v1935";
+  if (payload.forceRefresh !== true) {
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      try { return completionDashboardCacheResponseV1935(JSON.parse(cached), true, 0, true); }
+      catch (err) { cache.remove(cacheKey); }
+    }
+  }
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (!projectId) throw new Error("尚未設定 FIREBASE_PROJECT_ID");
+  var docs = listFirestoreCollectionMaskedV1935(projectId, firebaseAccessToken(), "studentProgress", 300, [
+    "studentId", "updatedAt", "updatedAtText", "details", "topicProgress"
+  ]);
+  var base = {
+    generatedAt: new Date().toISOString(),
+    sourceDocumentCount: docs.length,
+    students: docs.map(compactStudentProgressV1935)
+  };
+  base.payloadBytes = Utilities.newBlob(JSON.stringify(base)).getBytes().length;
+  var cacheJson = JSON.stringify(base);
+  var cacheStored = Utilities.newBlob(cacheJson).getBytes().length <= COMPLETION_DASHBOARD_CACHE_MAX_BYTES;
+  if (cacheStored) cache.put(cacheKey, cacheJson, COMPLETION_DASHBOARD_CACHE_SECONDS);
+  else cache.remove(cacheKey);
+  return completionDashboardCacheResponseV1935(base, false, docs.length, cacheStored);
+}
+
+function handleGetRecentAnswersV1935(payload) {
+  var cache = CacheService.getScriptCache();
+  var cacheKey = "recent_answers_v1935";
+  if (payload.forceRefresh !== true) {
+    var cached = cache.get(cacheKey);
+    if (cached) {
+      try {
+        var cachedBase = JSON.parse(cached);
+        return jsonResponse(Object.assign({}, cachedBase, {
+          status: "ok", cacheHit: true, cacheAgeSeconds: Math.max(0, Math.floor((Date.now() - new Date(cachedBase.generatedAt).getTime()) / 1000)), firestoreDocumentsRead: 0
+        }));
+      } catch (err) { cache.remove(cacheKey); }
+    }
+  }
+  var props = PropertiesService.getScriptProperties();
+  var projectId = props.getProperty("FIREBASE_PROJECT_ID");
+  if (!projectId) throw new Error("尚未設定 FIREBASE_PROJECT_ID");
+  var docs = queryRecentAnswerBatchesV1935(projectId, firebaseAccessToken(), 100);
+  var items = docs.map(function(doc) {
+    var item = parseFirebaseFields(doc.fields || {});
+    return {
+      batchId: String(item.batchId || doc.name.split("/").pop()),
+      studentId: String(item.studentId || ""),
+      name: String(item.name || ""),
+      className: String(item.className || ""),
+      topic: String(item.topicDisplayName || item.topicName || item.topic || "未分類"),
+      mode: String(item.mode || "練習"),
+      score: Number(item.score || 0),
+      correctCount: Number(item.correctCount || 0),
+      wrongCount: Number(item.wrongCount || 0),
+      questionCount: Number(item.questionCount || (Number(item.correctCount || 0) + Number(item.wrongCount || 0))),
+      duration: Number(item.duration || 0),
+      countsTowardScore: item.countsTowardScore === true,
+      answeredAt: item.clientCreatedAt || item.createdAt || ""
+    };
+  });
+  var base = { generatedAt: new Date().toISOString(), sourceDocumentCount: docs.length, items: items };
+  base.payloadBytes = Utilities.newBlob(JSON.stringify(base)).getBytes().length;
+  var cacheJson = JSON.stringify(base);
+  var cacheStored = Utilities.newBlob(cacheJson).getBytes().length <= COMPLETION_DASHBOARD_CACHE_MAX_BYTES;
+  if (cacheStored) cache.put(cacheKey, cacheJson, RECENT_ANSWERS_CACHE_SECONDS);
+  else cache.remove(cacheKey);
+  return jsonResponse(Object.assign({}, base, {
+    status: "ok", cacheHit: false, cacheStored: cacheStored, cacheAgeSeconds: 0, firestoreDocumentsRead: docs.length
+  }));
+}
+
 function handleMigrateWrongQuestionsV2() {
   var props = PropertiesService.getScriptProperties();
   var projectId = props.getProperty("FIREBASE_PROJECT_ID");
@@ -1098,6 +1328,9 @@ function firebaseJwtBase64(objOrBytes) {
 }
 
 function firebaseAccessToken() {
+  var tokenCache = CacheService.getScriptCache();
+  var cachedToken = tokenCache.get("firebase_oauth_access_token_v1935");
+  if (cachedToken) return cachedToken;
   var props = PropertiesService.getScriptProperties();
   var email = props.getProperty("FIREBASE_CLIENT_EMAIL") || props.getProperty("FIREBASE_SERVICE_ACCOUNT_EMAIL");
   var key = props.getProperty("FIREBASE_PRIVATE_KEY");
@@ -1119,6 +1352,7 @@ function firebaseAccessToken() {
   });
   var data = JSON.parse(res.getContentText());
   if (!data.access_token) throw new Error("Firebase token 取得失敗：" + res.getContentText());
+  tokenCache.put("firebase_oauth_access_token_v1935", data.access_token, 3000);
   return data.access_token;
 }
 
@@ -1222,6 +1456,51 @@ function listFirestoreCollection(projectId, token, collection, pageSize) {
     pageToken = data.nextPageToken || "";
   } while (pageToken);
   return docs;
+}
+
+function listFirestoreCollectionMaskedV1935(projectId, token, collection, pageSize, fieldPaths) {
+  var docs = [];
+  var pageToken = "";
+  do {
+    var url = "https://firestore.googleapis.com/v1/projects/" + projectId + "/databases/(default)/documents/" + collection + "?pageSize=" + (pageSize || 300);
+    (fieldPaths || []).forEach(function(path) { url += "&mask.fieldPaths=" + encodeURIComponent(path); });
+    if (pageToken) url += "&pageToken=" + encodeURIComponent(pageToken);
+    var res = UrlFetchApp.fetch(url, {
+      method: "get",
+      headers: { Authorization: "Bearer " + token },
+      muteHttpExceptions: true
+    });
+    if (res.getResponseCode() >= 300) throw new Error("Firestore 完成度代理讀取失敗：" + res.getContentText());
+    var data = JSON.parse(res.getContentText() || "{}");
+    (data.documents || []).forEach(function(doc) { docs.push(doc); });
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return docs;
+}
+
+function queryRecentAnswerBatchesV1935(projectId, token, limit) {
+  var url = "https://firestore.googleapis.com/v1/projects/" + projectId + "/databases/(default)/documents:runQuery";
+  var fields = [
+    "batchId", "studentId", "name", "className", "topic", "topicName", "topicDisplayName", "mode",
+    "score", "correctCount", "wrongCount", "questionCount", "duration", "countsTowardScore", "clientCreatedAt", "createdAt"
+  ];
+  var body = {
+    structuredQuery: {
+      select: { fields: fields.map(function(path) { return { fieldPath: path }; }) },
+      from: [{ collectionId: "answerBatches" }],
+      orderBy: [{ field: { fieldPath: "clientCreatedAt" }, direction: "DESCENDING" }],
+      limit: Number(limit || 100)
+    }
+  };
+  var res = UrlFetchApp.fetch(url, {
+    method: "post",
+    contentType: "application/json",
+    headers: { Authorization: "Bearer " + token },
+    payload: JSON.stringify(body),
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() >= 300) throw new Error("Firestore 最近做答讀取失敗：" + res.getContentText());
+  return (JSON.parse(res.getContentText() || "[]") || []).map(function(row) { return row.document; }).filter(Boolean);
 }
 
 function queryAnswerBatchesSinceV1922(projectId, token, cursorIso) {

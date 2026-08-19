@@ -3,7 +3,7 @@
 ## 1. 目前狀態
 
 - 專案：題庫系統 v1.9
-- 目前版本：v1.934
+- 目前版本：v1.935
 - 架構方向：Firebase-first，學生端不直接呼叫 GAS。
 - Google Sheet：老師維護題庫、系統設定、學生名單與成績回寫報表。
 - GAS：只作為 Google Sheet 與 Firebase 的同步工具。
@@ -84,6 +84,11 @@
 - [x] v1.934 新增 Ch08 穩定單元碼相容層，不修改學生歷史資料。
 - [x] v1.934 練習率改用章節實際題目 ID 與 attemptedQuestions 交集；未知狀態不再顯示 0%。
 - [x] v1.934 完成度、最高分、待完成看板與歷次成績改以名稱相容鍵優先，Ch08 禁用重複 topicId fallback。
+- [x] v1.935 GAS 管理登入新增 6 小時滑動 session、登出撤銷與登入失敗節流。
+- [x] v1.935 除 adminLogin 外的管理 GAS actions 統一驗證 adminSessionToken。
+- [x] v1.935 完成度看板改走 GAS 安全代理、field mask 與 120 秒共用快取。
+- [x] v1.935 新增獨立懶載入的最近 100 筆做答摘要代理，不預載 detailsJson。
+- [x] v1.935 管理端套用 Ch08 相容碼、尚缺單元欄與篩選後摘要重算。
 
 ## 3. 已知待處理問題
 
@@ -125,12 +130,18 @@
 - [ ] v1.933 需驗證科目首頁待完成數量不混入其他科目，全部章節仍顯示完整清單。
 - [ ] v1.933 需驗證全部完成時入口與完成提示，以及從待完成清單進入測驗／閃卡後的返回層級。
 - [ ] v1.933 需在手機確認三層返回按鈕、長單元名稱與快捷按鈕版面。
+- [ ] v1.935 部署後需驗證正確／偽造／過期／登出 session，以及所有教師重新登入流程。
+- [ ] v1.935 需核對完成度首次讀取、120 秒 cache hit、強制更新的 reads 與傳輸 KB 標示。
+- [ ] v1.935 需確認最近 100 筆只有展開時讀取，且不下載 detailsJson、不進行自動輪詢。
+- [ ] v1.935 需驗證 Sheet 名單中的未作答學生、Ch08 重複 topicId、尚缺單元與搜尋後摘要一致性。
 
 ## 4. 最近修改檔案
 
 - `index.html`
 - `firebase-v1685.js`
 - `Code.gs`
+- `ADMIN_GAS_PROXY_V1935.md`
+- `tests/v1935_proxy_static_test.js`
 - `admin.html`
 - `CreateQuestionBankSheet.gs`
 - `README.md`
@@ -176,7 +187,7 @@ handoff.md
 
 ```text
 請先閱讀 README.md、DEVELOPMENT_LOG.md、handoff.md。
-目前 v1.934 已在本機完成 Ch08 顯示相容修正；未搬移、刪除或改寫任何 Firestore 歷史資料，資料結構仍沿用 v1.925。
-下一步請依 README 部署前端與版本中繼資料，並用王昱閔帳號驗證 Ch08-05 至 08 的練習率及最高分；完整決策見 CH08_COMPATIBILITY_DECISION_2026-08-19.md。
+目前 v1.935 已在本機完成完成度 GAS 安全代理及最近 100 筆做答摘要；未搬移、刪除或改寫任何 Firestore 歷史資料，資料結構仍沿用 v1.925。
+部署時先發布新版 GAS，再立即發布管理端；所有教師須重新登入取得 adminSessionToken。完成度不再需要 Firebase Google 登入，但即時成績與分析仍沿用 Firebase 權限。
 若需要修改，請依 v1.9 Firebase-first 架構進行，並同步更新版本號與三份文件。
 ```

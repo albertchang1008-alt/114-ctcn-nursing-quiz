@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1934"></script>
-    <script src="firebase-v1685.js?v=1934"></script>
+    <script src="firebase-config.js?v=1935"></script>
+    <script src="firebase-v1685.js?v=1935"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -83,7 +83,7 @@
             </div>
             <div class="rounded-xl border border-gray-100 bg-gray-50 p-4">
                 <p class="text-xs text-gray-400 mb-1">版本</p>
-                <p class="font-bold text-gray-800">v1.934</p>
+                <p class="font-bold text-gray-800">v1.935</p>
             </div>
         </div>
 
@@ -389,7 +389,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.934 ／ Ch08 相容修正">v1.934</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="後台 v1.935 ／ GAS 安全代理">v1.935</span>
     <button onclick="tryOpenAdminModal()"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -653,16 +653,15 @@
                 </div>
             </div>
 
-            <!-- v1.931：每位學生完成度看板（手動更新） -->
+            <!-- v1.935：GAS 安全代理完成度看板 -->
             <div id="tab-completionLive" class="tab-content bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <div class="flex items-start justify-between gap-4 flex-wrap mb-5">
                     <div>
                         <h2 class="text-lg font-bold text-gray-800">學生完成度看板</h2>
-                        <p class="text-xs text-gray-400 mt-1">完整測驗或完整閃卡達到後台門檻才算完成；只有按「更新資料」時才讀取 Firebase。</p>
+                        <p class="text-xs text-gray-400 mt-1">完整測驗或完整閃卡達到門檻才算完成；資料由 GAS 安全代理讀取，兩分鐘內共用快取。</p>
                     </div>
                     <div class="flex gap-2 flex-wrap">
-                        <button onclick="adminCompletionGoogleLogin()" class="border border-emerald-200 text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 text-sm font-semibold">登入教師 Google 帳號</button>
-                        <button id="completion-live-refresh-btn" onclick="refreshAdminCompletionDashboard()" class="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-bold">↻ 更新資料</button>
+                        <button id="completion-live-refresh-btn" onclick="refreshAdminCompletionDashboard(true)" class="bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-bold">↻ 強制更新</button>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -686,18 +685,35 @@
                 <div id="completion-live-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
                 <div id="completion-live-status" class="text-center text-sm text-gray-400 py-8">請先選擇科目</div>
                 <div id="completion-live-table-wrap" class="hidden overflow-x-auto border border-gray-200 rounded-xl">
-                    <table class="w-full min-w-[760px] text-sm border-collapse">
+                    <table class="w-full min-w-[940px] text-sm border-collapse">
                         <thead class="bg-gray-50 text-xs text-gray-500">
                             <tr>
                                 <th class="px-4 py-3 text-left">學生</th>
                                 <th class="px-3 py-3 text-left">班級</th>
                                 <th class="px-3 py-3 text-center">完成度</th>
                                 <th class="px-3 py-3 text-center">最高有效分數</th>
+                                <th class="px-3 py-3 text-left">尚缺單元</th>
                                 <th class="px-4 py-3 text-left">最後更新</th>
                             </tr>
                         </thead>
                         <tbody id="completion-live-list" class="divide-y divide-gray-100"></tbody>
                     </table>
+                </div>
+                <div class="mt-6 border-t border-gray-100 pt-5">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div>
+                            <h3 class="font-bold text-gray-800">最近 100 筆做答紀錄</h3>
+                            <p class="text-xs text-gray-400 mt-1">包含正式測驗與抽題練習；展開時才讀取摘要，不預載逐題內容。</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="recent-answers-toggle-btn" onclick="toggleRecentAnswers()" class="border border-sky-200 bg-sky-50 text-sky-700 rounded-lg px-3 py-2 text-sm font-bold">展開紀錄</button>
+                            <button id="recent-answers-refresh-btn" onclick="loadRecentAnswers(true)" class="hidden bg-sky-500 text-white rounded-lg px-3 py-2 text-sm font-bold">強制更新</button>
+                        </div>
+                    </div>
+                    <div id="recent-answers-panel" class="hidden mt-4">
+                        <div id="recent-answers-status" class="text-center text-xs text-gray-400 py-3"></div>
+                        <div id="recent-answers-list" class="space-y-2"></div>
+                    </div>
                 </div>
             </div>
 
@@ -1144,6 +1160,8 @@ let currentQuestionIndex = 0;
 let attemptCount       = 0;
 let isRetryMode        = false;
 let loggedInAdminName  = "";
+let adminSessionToken  = "";
+const ADMIN_SESSION_STORAGE_KEY = "quiz_admin_session_v1935";
 
 // ── Chart 實例 ──
 let progressChartInst = null;
@@ -1151,7 +1169,8 @@ let topicChartInst    = null;
 let teacherData       = null;
 
 document.addEventListener('DOMContentLoaded', () => {
-    document.title = "教師後台 - 題庫系統 v1.934";
+    document.title = "教師後台 - 題庫系統 v1.935";
+    restoreAdminSessionFromStorage();
 });
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && isLoggedIn) verifySessionOnce();
@@ -2836,12 +2855,51 @@ async function startComboQuiz() {
     }
 }
 
-function openAdminModal() {
+function persistAdminSession() {
+    try {
+        sessionStorage.setItem(ADMIN_SESSION_STORAGE_KEY, JSON.stringify({ token: adminSessionToken, adminName: loggedInAdminName }));
+    } catch (err) {}
+}
+
+function restoreAdminSessionFromStorage() {
+    try {
+        const saved = JSON.parse(sessionStorage.getItem(ADMIN_SESSION_STORAGE_KEY) || "{}");
+        adminSessionToken = String(saved.token || "");
+        loggedInAdminName = String(saved.adminName || "");
+    } catch (err) {
+        adminSessionToken = "";
+        loggedInAdminName = "";
+    }
+}
+
+function clearAdminSession() {
+    adminSessionToken = "";
+    loggedInAdminName = "";
+    try { sessionStorage.removeItem(ADMIN_SESSION_STORAGE_KEY); } catch (err) {}
+}
+
+function showAdminLoginModal(message = "") {
     document.getElementById("admin-modal").classList.add("open");
     document.getElementById("admin-id").value  = "";
     document.getElementById("admin-pwd").value = "";
-    document.getElementById("admin-login-error").classList.add("hidden");
+    const error = document.getElementById("admin-login-error");
+    if (message) showErr(error, message);
+    else error.classList.add("hidden");
     setTimeout(() => document.getElementById("admin-id").focus(), 100);
+}
+
+async function openAdminModal() {
+    restoreAdminSessionFromStorage();
+    if (adminSessionToken) {
+        try {
+            const res = await postGAS({ action: "verifyAdminSession" });
+            loggedInAdminName = res.adminName || loggedInAdminName;
+            persistAdminSession();
+            openTeacherPortal();
+            return;
+        } catch (err) {}
+    }
+    showAdminLoginModal();
 }
 function closeAdminModal() {
     document.getElementById("admin-modal").classList.remove("open");
@@ -2866,10 +2924,13 @@ async function doAdminLogin() {
         }
         // 登入成功
         loggedInAdminName = res.adminName || adminId;
+        adminSessionToken = String(res.adminSessionToken || "");
+        if (!adminSessionToken) throw new Error("GAS 未回傳安全 session，請先部署 v1.935 GAS。 ");
+        persistAdminSession();
         closeAdminModal();
         openTeacherPortal();
     } catch (err) {
-        showErr(errEl, "驗證失敗，請檢查網路連線");
+        showErr(errEl, err.message || "驗證失敗，請檢查網路連線");
     } finally {
         btn.disabled    = false;
         btn.textContent = "登入後台";
@@ -2885,11 +2946,22 @@ function openTeacherPortal() {
     document.body.style.overflow = "hidden";
     loadTeacherData();
 }
-function closeTeacherPortal() {
+async function closeTeacherPortal() {
     stopAdminLiveScores();
+    try {
+        if (adminSessionToken) await postGAS({ action: "adminLogout" });
+    } catch (err) {
+        console.warn("GAS 管理員 session 登出失敗：", err);
+    }
+    clearAdminSession();
+    adminCompletionProgressMap.clear();
+    adminCompletionLoaded = false;
+    adminCompletionTrafficMeta = null;
+    recentAnswersLoaded = false;
+    recentAnswersOpen = false;
+    recentAnswersItems = [];
     document.getElementById("teacher-portal").style.display = "none";
     document.body.style.overflow = "";
-    loggedInAdminName = "";
 }
 async function loadTeacherData() {
     show("teacher-loading"); hide("teacher-error"); hide("teacher-content");
@@ -3918,10 +3990,34 @@ function closeAdminScoreDetail() {
     document.getElementById("admin-score-detail-modal").style.display = "none";
 }
 
-// ── v1.931 完成度看板（手動單次讀取） ──────────────
+// ── v1.935 完成度看板（GAS 安全代理） ──────────────
 const adminCompletionProgressMap = new Map();
 let adminCompletionLoaded = false;
 let adminCompletionLoadedAt = null;
+let adminCompletionTrafficMeta = null;
+let recentAnswersLoaded = false;
+let recentAnswersOpen = false;
+let recentAnswersItems = [];
+
+function normalizeCompletionTopicIdentity(value) {
+    return String(value || "").normalize("NFKC").replace(/[－–—]/g, "-").replace(/\s+/g, "").toLowerCase();
+}
+
+function completionCh08Code(value) {
+    const match = normalizeCompletionTopicIdentity(value).match(/過敏與腫瘤免疫-0?([1-8])(?:[.。]|$)/);
+    return match ? `IMM-CH08-${String(match[1]).padStart(2, "0")}` : "";
+}
+
+function completionCompatibilityKey(value) {
+    return completionCh08Code(value) || `name:${normalizeCompletionTopicIdentity(value)}`;
+}
+
+function completionDisplayName(value) {
+    const text = String(value || "未分類");
+    return completionCh08Code(text) === "IMM-CH08-02"
+        ? text.replace(/第二型過敏\s*[（(]\s*血清病非\s*II\s*[）)]/gi, "第二型過敏")
+        : text;
+}
 
 function completionDashboardTopicName(topic) {
     return String(topic?.name || topic?.topic || topic?.chapterName || "").trim();
@@ -3937,8 +4033,11 @@ function completionDashboardSubjectName(topic) {
 
 function isConfiguredCompletionTopic(topic) {
     const ids = new Set(completionSettings?.completionTopicIds || []);
-    const names = new Set(completionSettings?.completionTopics || []);
-    return (topic?.topicId && ids.has(topic.topicId)) || names.has(completionDashboardTopicName(topic));
+    const names = new Set((completionSettings?.completionTopics || []).map(completionCompatibilityKey));
+    const topicName = completionDashboardTopicName(topic);
+    if (names.has(completionCompatibilityKey(topicName))) return true;
+    if (completionCh08Code(topicName) && names.size > 0) return false;
+    return Boolean(topic?.topicId && ids.has(topic.topicId));
 }
 
 function completionDashboardTopics() {
@@ -3962,7 +4061,7 @@ function prepareAdminCompletionSubjects() {
 }
 
 function completionDashboardTopicKey(topic) {
-    return topic?.topicId ? `id:${topic.topicId}` : `name:${completionDashboardTopicName(topic)}`;
+    return `compat:${completionCompatibilityKey(completionDashboardTopicName(topic))}`;
 }
 
 function prepareCompletionLiveTopics() {
@@ -3982,41 +4081,27 @@ function stopAdminCompletionDashboard() {
     // 本看板沒有 onSnapshot；保留函式讓頁籤生命週期明確，離開時不需解除監聽。
 }
 
-async function adminCompletionGoogleLogin() {
-    const status = document.getElementById("completion-live-status");
-    try {
-        status.textContent = "正在登入教師 Google 帳號…";
-        status.classList.remove("hidden");
-        await window.Firebase1685.startGoogleLogin();
-        status.textContent = "登入成功，請按「更新資料」讀取完成度。";
-    } catch (err) {
-        status.textContent = "教師 Google 登入失敗：" + (err.message || "請稍後再試");
-    }
-}
-
-async function refreshAdminCompletionDashboard() {
+async function refreshAdminCompletionDashboard(forceRefresh = false) {
     const status = document.getElementById("completion-live-status");
     const button = document.getElementById("completion-live-refresh-btn");
-    const subjectKey = document.getElementById("completion-live-subject")?.value || "";
-    if (!subjectKey) {
-        status.textContent = "請先選擇科目";
-        status.classList.remove("hidden");
-        return;
-    }
-    const originalLabel = button?.textContent || "↻ 更新資料";
+    const originalLabel = button?.textContent || "↻ 強制更新";
     if (button) { button.disabled = true; button.textContent = "更新中…"; }
-    status.textContent = "正在單次讀取學生完成度…";
+    status.textContent = forceRefresh ? "正在強制讀取最新完成度…" : "正在讀取完成度快取…";
     status.classList.remove("hidden");
     try {
-        const user = await window.Firebase1685.ensureSignedIn();
-        const token = await user.getIdTokenResult(true);
-        if (token?.claims?.admin !== true) throw new Error("目前 Firebase 帳號沒有 admin Custom Claim，無法讀取全班完成度。");
-        const coll = window.FIREBASE_V18_CONFIG?.collections?.studentProgress || "studentProgress";
-        const snapshot = await firebase.firestore().collection(coll).get();
+        const res = await postGAS({ action: "getCompletionDashboardV1935", forceRefresh: forceRefresh === true });
+        if (res.status !== "ok") throw new Error(res.message || "GAS 完成度代理讀取失敗");
         adminCompletionProgressMap.clear();
-        snapshot.docs.forEach(doc => adminCompletionProgressMap.set(doc.id, { id: doc.id, ...doc.data() }));
+        (res.students || []).forEach(student => adminCompletionProgressMap.set(String(student.studentId), {
+            id: String(student.studentId),
+            studentId: String(student.studentId),
+            updatedAt: student.updatedAt || "",
+            details: Array.isArray(student.topics) ? student.topics : [],
+            topicProgress: {}
+        }));
         adminCompletionLoaded = true;
-        adminCompletionLoadedAt = new Date();
+        adminCompletionLoadedAt = new Date(res.generatedAt || Date.now());
+        adminCompletionTrafficMeta = res;
         renderAdminCompletionLive();
     } catch (err) {
         status.textContent = "更新失敗：" + (err.message || "無法讀取完成度");
@@ -4035,13 +4120,19 @@ function completionDashboardProgressForTopic(progress, topic) {
     if (!progress) return null;
     const topicId = String(topic?.topicId || "").trim();
     const topicName = completionDashboardTopicName(topic);
-    const values = Object.values(progress.topicProgress || {});
-    const details = Array.isArray(progress.details) ? progress.details : [];
-    return (topicId && progress.topicProgress?.[topicId])
-        || (topicId && values.find(item => String(item?.topicId || "").trim() === topicId))
-        || details.find(item => (topicId && String(item?.topicId || "").trim() === topicId)
-            || [item?.topic, item?.topicName].map(value => String(value || "").trim()).includes(topicName))
-        || null;
+    const values = [...(Array.isArray(progress.details) ? progress.details : []), ...Object.values(progress.topicProgress || {})];
+    const targetKey = completionCompatibilityKey(topicName);
+    const matches = values.filter(item => [item?.topic, item?.topicName]
+        .filter(Boolean).some(name => completionCompatibilityKey(name) === targetKey));
+    if (!matches.length && !completionCh08Code(topicName) && topicId) {
+        const byId = values.find(item => String(item?.topicId || "").trim() === topicId);
+        if (byId) matches.push(byId);
+    }
+    return matches.reduce((best, item) => {
+        if (!best) return item;
+        if (item?.best !== null && item?.best !== undefined && (best?.best === null || best?.best === undefined || Number(item.best) > Number(best.best))) return item;
+        return best;
+    }, null);
 }
 
 function completionDashboardTimeMillis(value) {
@@ -4055,11 +4146,8 @@ function completionDashboardTimeMillis(value) {
 function completionDashboardRoster() {
     const roster = new Map();
     Object.entries(teacherData?.studentInfoMap || {}).forEach(([studentId, info]) => {
-        roster.set(String(studentId), { studentId: String(studentId), ...(info || {}) });
-    });
-    adminCompletionProgressMap.forEach((progress, studentId) => {
-        const existing = roster.get(String(studentId)) || {};
-        roster.set(String(studentId), { ...progress, ...existing, studentId: String(studentId), progress });
+        const sid = String(studentId);
+        roster.set(sid, { studentId: sid, ...(info || {}), progress: adminCompletionProgressMap.get(sid) || null });
     });
     return [...roster.values()];
 }
@@ -4117,7 +4205,7 @@ function renderAdminCompletionLive() {
                     completionDashboardTimeMillis(item?.lastAnsweredAt),
                     completionDashboardTimeMillis(item?.lastAnsweredAtText)
                 );
-                return { item, best, passed, updatedMillis };
+                return { item, topic, best, passed, updatedMillis };
             });
             const completed = topicResults.filter(result => result.passed).length;
             const attempted = topicResults.filter(result => result.best !== null && result.best !== undefined).length;
@@ -4125,14 +4213,17 @@ function renderAdminCompletionLive() {
             const pct = total ? Math.round(completed / total * 100) : 0;
             const state = completed === total && total > 0 ? "completed" : (attempted > 0 ? "progress" : "not-started");
             const best = topicKey === "ALL" ? null : topicResults[0]?.best;
+            const missingNames = topicResults.filter(result => !result.passed)
+                .map(result => completionDisplayName(completionDashboardTopicName(result.topic)));
             const updatedMillis = Math.max(0, ...topicResults.map(result => result.updatedMillis), completionDashboardTimeMillis(progress?.updatedAt), completionDashboardTimeMillis(progress?.updatedAtText));
             return {
                 studentId,
                 name: String(student.name || student.studentName || progress?.name || "未設定姓名"),
                 className: String(student.className || student.class || progress?.className || "—"),
-                completed, attempted, total, pct, state, best, updatedMillis
+                completed, attempted, total, pct, state, best, missingNames, updatedMillis
             };
-        });
+        })
+        .filter(row => !keyword || `${row.studentId} ${row.name} ${row.className}`.toLowerCase().includes(keyword));
 
     const allCounts = {
         total: computed.length,
@@ -4149,7 +4240,6 @@ function renderAdminCompletionLive() {
 
     const stateOrder = { "not-started": 0, "progress": 1, "completed": 2 };
     const rows = computed
-        .filter(row => !keyword || `${row.studentId} ${row.name} ${row.className}`.toLowerCase().includes(keyword))
         .sort((a, b) => stateOrder[a.state] - stateOrder[b.state]
             || a.className.localeCompare(b.className, "zh-TW", { numeric: true })
             || a.studentId.localeCompare(b.studentId, "zh-TW", { numeric: true }));
@@ -4162,20 +4252,75 @@ function renderAdminCompletionLive() {
         const [stateLabel, stateClass] = stateView[row.state];
         const completionText = topicKey === "ALL" ? `${row.completed} / ${row.total}（${row.pct}%）` : (row.state === "completed" ? "1 / 1（100%）" : "0 / 1（0%）");
         const bestText = topicKey === "ALL" ? "—" : (row.best === null || row.best === undefined ? "—" : `${Number(row.best)} 分`);
+        const missingText = row.missingNames.length ? row.missingNames.join("、") : "—";
         return `<tr class="hover:bg-gray-50">
             <td class="px-4 py-3"><p class="font-bold text-gray-800">${escapeAdminScore(row.name)}</p><p class="text-xs text-gray-400">${escapeAdminScore(row.studentId)}</p></td>
             <td class="px-3 py-3 text-gray-600">${escapeAdminScore(row.className)}</td>
             <td class="px-3 py-3 text-center"><span class="inline-block text-xs font-bold px-2 py-1 rounded-full ${stateClass}">${stateLabel}</span><p class="text-xs text-gray-500 mt-1">${completionText}</p></td>
             <td class="px-3 py-3 text-center font-bold text-gray-700">${bestText}</td>
+            <td class="px-3 py-3 text-xs text-gray-600 max-w-[320px] whitespace-normal">${escapeAdminScore(missingText)}</td>
             <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${row.updatedMillis ? fmtTaipeiAdmin(new Date(row.updatedMillis)) : "—"}</td>
         </tr>`;
     }).join("");
+    const traffic = adminCompletionTrafficMeta || {};
+    const payloadKb = Math.max(0, Number(traffic.payloadBytes || 0) / 1024).toFixed(1);
+    const sourceLabel = traffic.cacheHit ? `GAS 快取（${Number(traffic.cacheAgeSeconds || 0)} 秒）` : "Firestore 最新讀取";
+    const cacheLabel = traffic.cacheStored === false ? "｜資料超過快取限制，本次未快取" : "";
     status.textContent = rows.length
-        ? `資料更新時間：${fmtTaipeiAdmin(adminCompletionLoadedAt)}｜本次快取 ${adminCompletionProgressMap.size} 筆進度文件（切換篩選不會重新讀取）`
+        ? `資料時間：${fmtTaipeiAdmin(adminCompletionLoadedAt)}｜${sourceLabel}｜Firestore reads ${Number(traffic.firestoreDocumentsRead || 0)}｜來源 ${Number(traffic.sourceDocumentCount || adminCompletionProgressMap.size)} 份｜傳輸約 ${payloadKb} KB${cacheLabel}`
         : "沒有符合搜尋條件的學生";
     status.classList.remove("hidden");
     status.className = "text-center text-xs text-gray-400 py-3";
     wrap.classList.toggle("hidden", rows.length === 0);
+}
+
+async function toggleRecentAnswers() {
+    recentAnswersOpen = !recentAnswersOpen;
+    const panel = document.getElementById("recent-answers-panel");
+    const toggle = document.getElementById("recent-answers-toggle-btn");
+    const refresh = document.getElementById("recent-answers-refresh-btn");
+    panel?.classList.toggle("hidden", !recentAnswersOpen);
+    refresh?.classList.toggle("hidden", !recentAnswersOpen);
+    if (toggle) toggle.textContent = recentAnswersOpen ? "收合紀錄" : "展開紀錄";
+    if (recentAnswersOpen && !recentAnswersLoaded) await loadRecentAnswers(false);
+}
+
+async function loadRecentAnswers(forceRefresh = false) {
+    const status = document.getElementById("recent-answers-status");
+    const list = document.getElementById("recent-answers-list");
+    const button = document.getElementById("recent-answers-refresh-btn");
+    if (!status || !list) return;
+    const oldLabel = button?.textContent || "強制更新";
+    if (button) { button.disabled = true; button.textContent = "更新中…"; }
+    status.textContent = forceRefresh ? "正在讀取最新 100 筆做答摘要…" : "正在讀取最近做答快取…";
+    try {
+        const res = await postGAS({ action: "getRecentAnswersV1935", forceRefresh: forceRefresh === true });
+        if (res.status !== "ok") throw new Error(res.message || "最近做答代理讀取失敗");
+        recentAnswersItems = Array.isArray(res.items) ? res.items : [];
+        recentAnswersLoaded = true;
+        list.innerHTML = recentAnswersItems.map(item => {
+            const formal = item.countsTowardScore === true;
+            return `<div class="border border-gray-100 rounded-xl px-4 py-3 flex items-center justify-between gap-4 hover:bg-gray-50">
+                <div class="min-w-0">
+                    <p class="font-bold text-gray-800">${escapeAdminScore(item.name || "未設定姓名")} <span class="text-xs font-normal text-gray-400">${escapeAdminScore(item.studentId || "")}</span></p>
+                    <p class="text-xs text-gray-500 mt-1 whitespace-normal">${escapeAdminScore(completionDisplayName(item.topic || "未分類"))} · ${escapeAdminScore(item.mode || "練習")}</p>
+                    <p class="text-xs text-gray-400 mt-1">${escapeAdminScore(item.className || "—")} · ${fmtTaipeiAdmin(item.answeredAt)} · ${Number(item.correctCount || 0)}/${Number(item.questionCount || 0)} 題 · ${Number(item.duration || 0)} 秒</p>
+                </div>
+                <div class="shrink-0 text-right">
+                    <p class="text-2xl font-black ${Number(item.score || 0) >= 80 ? "text-green-600" : Number(item.score || 0) >= 60 ? "text-amber-600" : "text-rose-600"}">${Number(item.score || 0)}</p>
+                    <span class="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${formal ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}">${formal ? "正式計分" : "抽題練習"}</span>
+                </div>
+            </div>`;
+        }).join("") || '<p class="text-center text-sm text-gray-400 py-8">尚無做答紀錄</p>';
+        const kb = Math.max(0, Number(res.payloadBytes || 0) / 1024).toFixed(1);
+        const source = res.cacheHit ? `GAS 快取（${Number(res.cacheAgeSeconds || 0)} 秒）` : "Firestore 最新讀取";
+        status.textContent = `資料時間：${fmtTaipeiAdmin(res.generatedAt)}｜${source}｜Firestore reads ${Number(res.firestoreDocumentsRead || 0)}｜${Number(res.sourceDocumentCount || 0)} 筆｜傳輸約 ${kb} KB`;
+    } catch (err) {
+        status.textContent = "讀取失敗：" + (err.message || "無法取得最近做答");
+        list.innerHTML = "";
+    } finally {
+        if (button) { button.disabled = false; button.textContent = oldLabel; }
+    }
 }
 
 let detailStatsLoaded  = false;
@@ -4198,7 +4343,8 @@ async function switchTab(tab, event) {
     }
     if (tab === "completionLive") {
         prepareAdminCompletionSubjects();
-        renderAdminCompletionLive();
+        if (!adminCompletionLoaded) await refreshAdminCompletionDashboard(false);
+        else renderAdminCompletionLive();
     } else {
         stopAdminCompletionDashboard();
     }
@@ -4463,6 +4609,10 @@ function shuffle(arr) {
 async function postGAS(obj) {
     const allowedActions = new Set([
         "adminLogin",
+        "verifyAdminSession",
+        "adminLogout",
+        "getCompletionDashboardV1935",
+        "getRecentAnswersV1935",
         "saveSettings",
         "syncFirebaseV19",
         "syncFirebaseV1685",
@@ -4481,12 +4631,24 @@ async function postGAS(obj) {
     if (!allowedActions.has(action)) {
         throw new Error(`GAS slim 已移除「${action || "未指定"}」。學生作答、排行、錯題與分析請走 Firebase。`);
     }
+    const payload = { ...(obj || {}) };
+    if (action !== "adminLogin" && adminSessionToken) payload.adminSessionToken = adminSessionToken;
     const res = await fetch(GAS_URL, {
         method:"POST",
         headers:{"Content-Type":"text/plain;charset=utf-8"},
-        body: JSON.stringify(obj)
+        body: JSON.stringify(payload)
     });
-    return await res.json();
+    const data = await res.json();
+    if (data?.status === "auth_required") {
+        clearAdminSession();
+        document.getElementById("teacher-portal").style.display = "none";
+        document.body.style.overflow = "";
+        showAdminLoginModal(data.message || "管理員登入已失效，請重新登入。");
+        const err = new Error(data.message || "管理員登入已失效");
+        err.code = "AUTH_REQUIRED";
+        throw err;
+    }
+    return data;
 }
 // ── 重複登入報告 ──
 let dupLoginLoaded = false;
