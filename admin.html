@@ -688,10 +688,24 @@
                             <div id="completion-live-topic-options" class="space-y-1"></div>
                         </div>
                     </div>
-                    <label class="block">
+                    <div class="block relative" id="completion-live-student-control">
                         <span class="block text-xs font-semibold text-gray-500 mb-1">搜尋學生</span>
-                        <input id="completion-live-search" type="search" oninput="renderAdminCompletionLive()" placeholder="姓名、學號或班級…" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                    </label>
+                        <button type="button" id="completion-live-student-button" onclick="toggleCompletionStudentMenu(event)" aria-haspopup="true" aria-expanded="false"
+                            class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-3 mb-2">
+                            <span id="completion-live-student-label" class="truncate">全部學生</span><span class="text-gray-400">⌄</span>
+                        </button>
+                        <div id="completion-live-student-menu" class="hidden absolute z-30 left-0 right-0 mt-[-0.4rem] bg-white border border-gray-200 rounded-xl shadow-xl p-3 max-h-80 overflow-y-auto" onclick="event.stopPropagation()">
+                            <div class="flex items-center justify-between gap-2 pb-2 mb-2 border-b border-gray-100">
+                                <span id="completion-live-student-count" class="text-xs text-gray-500">已選 0 位</span>
+                                <div class="flex gap-1.5">
+                                    <button type="button" onclick="selectAllCompletionStudents()" class="text-xs font-bold text-sky-700 bg-sky-50 rounded-md px-2 py-1">全選</button>
+                                    <button type="button" onclick="clearCompletionStudents()" class="text-xs font-bold text-gray-600 bg-gray-100 rounded-md px-2 py-1">清除</button>
+                                </div>
+                            </div>
+                            <div id="completion-live-student-options" class="space-y-1"></div>
+                        </div>
+                        <input id="completion-live-search" type="search" oninput="renderAdminCompletionLive()" placeholder="在已選學生中搜尋…" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    </div>
                 </div>
                 <div id="completion-live-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
                 <div id="completion-live-view-controls" class="hidden items-center justify-between gap-3 flex-wrap mb-4">
@@ -711,7 +725,9 @@
                             <tr>
                                 <th class="px-4 py-3 text-left">學生</th>
                                 <th class="px-3 py-3 text-left">班級</th>
-                                <th class="px-3 py-3 text-center">完成度</th>
+                                <th class="px-3 py-3 text-center">
+                                    <button id="completion-live-student-sort-btn" type="button" onclick="toggleCompletionStudentSortDirection()" class="inline-flex items-center gap-1 font-bold text-gray-600 hover:text-sky-700" aria-label="切換學生完成度排序">完成度 <span id="completion-live-student-sort-icon" aria-hidden="true">↑</span></button>
+                                </th>
                                 <th class="px-3 py-3 text-center">最高有效分數</th>
                                 <th class="px-3 py-3 text-left">尚缺單元</th>
                                 <th class="px-4 py-3 text-left">最後更新</th>
@@ -762,6 +778,18 @@
                             <button type="button" onclick="closeCompletionStatusStudents()" class="text-2xl leading-none text-gray-400 hover:text-gray-600" aria-label="關閉學生名單">&times;</button>
                         </div>
                         <div id="completion-status-students-list" class="p-5 overflow-y-auto space-y-2"></div>
+                    </div>
+                </div>
+                <div id="completion-missing-topics-modal" class="fixed inset-0 bg-black/50 z-[90] items-center justify-center p-3" style="display:none;" onclick="handleCompletionMissingTopicsBackdrop(event)">
+                    <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[88vh] overflow-hidden flex flex-col" role="dialog" aria-modal="true" aria-labelledby="completion-missing-topics-title">
+                        <div class="flex justify-between items-start gap-4 px-5 py-4 border-b">
+                            <div>
+                                <h3 id="completion-missing-topics-title" class="font-bold text-gray-800">尚缺單元</h3>
+                                <p id="completion-missing-topics-subtitle" class="text-xs text-gray-400 mt-1"></p>
+                            </div>
+                            <button type="button" onclick="closeCompletionMissingTopics()" class="text-2xl leading-none text-gray-400 hover:text-gray-600" aria-label="關閉尚缺單元">&times;</button>
+                        </div>
+                        <div id="completion-missing-topics-list" class="p-5 overflow-y-auto space-y-2"></div>
                     </div>
                 </div>
             </div>
@@ -3015,9 +3043,14 @@ async function closeTeacherPortal() {
     completionLiveView = "student";
     completionLiveNamesMasked = true;
     completionLiveRankDirection = "asc";
+    completionLiveStudentSortDirection = "asc";
     completionLiveComputedRows = [];
     completionLiveSelectedTopics = [];
+    completionLiveAvailableStudents = [];
+    completionLiveSelectedStudentIds.clear();
+    completionLivePreparedStudentSubject = null;
     closeCompletionStatusStudents();
+    closeCompletionMissingTopics();
     document.getElementById("teacher-portal").style.display = "none";
     document.body.style.overflow = "";
 }
@@ -4062,9 +4095,14 @@ let completionLivePreparedSubject = null;
 let completionLiveView = "student";
 let completionLiveNamesMasked = true;
 let completionLiveRankDirection = "asc";
+let completionLiveStudentSortDirection = "asc";
 let completionLiveComputedRows = [];
 let completionLiveSelectedTopics = [];
 let completionStatusModalContext = null;
+let completionMissingModalStudentId = null;
+let completionLiveAvailableStudents = [];
+let completionLiveSelectedStudentIds = new Set();
+let completionLivePreparedStudentSubject = null;
 
 function completionMaskedName(value) {
     const chars = Array.from(String(value || "").trim());
@@ -4144,6 +4182,8 @@ function completionDashboardTopicKey(topic) {
 }
 
 function handleCompletionSubjectChange() {
+    completionLiveSelectedStudentIds.clear();
+    completionLivePreparedStudentSubject = null;
     prepareCompletionLiveTopics(true);
     renderAdminCompletionLive();
 }
@@ -4228,11 +4268,14 @@ function clearCompletionTopics() {
 
 document.addEventListener("click", event => {
     if (!document.getElementById("completion-live-topic-control")?.contains(event.target)) closeCompletionTopicMenu();
+    if (!document.getElementById("completion-live-student-control")?.contains(event.target)) closeCompletionStudentMenu();
 });
 
 function stopAdminCompletionDashboard() {
     // 本看板沒有 onSnapshot；保留函式讓頁籤生命週期明確，離開時不需解除監聽。
     closeCompletionStatusStudents();
+    closeCompletionMissingTopics();
+    closeCompletionStudentMenu();
 }
 
 async function refreshAdminCompletionDashboard(forceRefresh = false) {
@@ -4306,6 +4349,86 @@ function completionDashboardRoster() {
     return [...roster.values()];
 }
 
+function prepareCompletionLiveStudents(students) {
+    const subjectKey = document.getElementById("completion-live-subject")?.value || "";
+    const previousTotal = completionLiveAvailableStudents.length;
+    const previouslyAllSelected = previousTotal > 0 && completionLiveSelectedStudentIds.size === previousTotal;
+    completionLiveAvailableStudents = [...students].sort((a, b) => String(a.className || a.class || "").localeCompare(String(b.className || b.class || ""), "zh-TW", { numeric: true })
+        || String(a.studentId || a.id || "").localeCompare(String(b.studentId || b.id || ""), "zh-TW", { numeric: true }));
+    const availableIds = new Set(completionLiveAvailableStudents.map(student => String(student.studentId || student.id || "")));
+    if (completionLivePreparedStudentSubject !== subjectKey || previouslyAllSelected) {
+        completionLiveSelectedStudentIds = new Set(availableIds);
+    } else {
+        completionLiveSelectedStudentIds = new Set([...completionLiveSelectedStudentIds].filter(studentId => availableIds.has(studentId)));
+    }
+    completionLivePreparedStudentSubject = subjectKey;
+    renderCompletionStudentMenu();
+}
+
+function renderCompletionStudentMenu() {
+    const options = document.getElementById("completion-live-student-options");
+    const label = document.getElementById("completion-live-student-label");
+    const count = document.getElementById("completion-live-student-count");
+    if (!options || !label || !count) return;
+    options.innerHTML = completionLiveAvailableStudents.map(student => {
+        const studentId = String(student.studentId || student.id || "");
+        const progress = student.progress || adminCompletionProgressMap.get(studentId) || null;
+        const name = String(student.name || student.studentName || progress?.name || "");
+        const className = String(student.className || student.class || progress?.className || "—");
+        const checked = completionLiveSelectedStudentIds.has(studentId);
+        return `<label class="flex items-start gap-2 rounded-lg px-2 py-2 hover:bg-sky-50 cursor-pointer">
+            <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-sky-600" data-student-id="${escapeAdminScore(studentId)}" ${checked ? "checked" : ""}
+                onchange="toggleCompletionStudentSelection(this.dataset.studentId,this.checked)">
+            <span class="text-sm text-gray-700 leading-snug">${escapeAdminScore(completionVisibleName(name))}｜${escapeAdminScore(className)}｜${escapeAdminScore(studentId)}</span>
+        </label>`;
+    }).join("") || '<p class="text-xs text-gray-400 text-center py-4">此科目沒有學生</p>';
+    const selected = completionLiveSelectedStudentIds.size;
+    const total = completionLiveAvailableStudents.length;
+    count.textContent = `已選 ${selected} / ${total} 位`;
+    if (selected === 0) label.textContent = "請選擇學生";
+    else if (selected === total) label.textContent = "全部學生";
+    else if (selected === 1) {
+        const student = completionLiveAvailableStudents.find(item => completionLiveSelectedStudentIds.has(String(item.studentId || item.id || "")));
+        const studentId = String(student?.studentId || student?.id || "");
+        const progress = student?.progress || adminCompletionProgressMap.get(studentId) || null;
+        label.textContent = `${completionVisibleName(student?.name || student?.studentName || progress?.name || "")}｜${studentId}`;
+    } else label.textContent = `已選 ${selected} 位學生`;
+}
+
+function toggleCompletionStudentMenu(event) {
+    event?.stopPropagation();
+    const menu = document.getElementById("completion-live-student-menu");
+    const button = document.getElementById("completion-live-student-button");
+    if (!menu || !button) return;
+    const willOpen = menu.classList.contains("hidden");
+    menu.classList.toggle("hidden", !willOpen);
+    button.setAttribute("aria-expanded", String(willOpen));
+}
+
+function closeCompletionStudentMenu() {
+    document.getElementById("completion-live-student-menu")?.classList.add("hidden");
+    document.getElementById("completion-live-student-button")?.setAttribute("aria-expanded", "false");
+}
+
+function toggleCompletionStudentSelection(studentId, checked) {
+    if (checked) completionLiveSelectedStudentIds.add(String(studentId));
+    else completionLiveSelectedStudentIds.delete(String(studentId));
+    renderCompletionStudentMenu();
+    renderAdminCompletionLive();
+}
+
+function selectAllCompletionStudents() {
+    completionLiveSelectedStudentIds = new Set(completionLiveAvailableStudents.map(student => String(student.studentId || student.id || "")));
+    renderCompletionStudentMenu();
+    renderAdminCompletionLive();
+}
+
+function clearCompletionStudents() {
+    completionLiveSelectedStudentIds.clear();
+    renderCompletionStudentMenu();
+    renderAdminCompletionLive();
+}
+
 function setCompletionLiveView(view) {
     completionLiveView = view === "topic" ? "topic" : "student";
     closeCompletionStatusStudents();
@@ -4314,6 +4437,11 @@ function setCompletionLiveView(view) {
 
 function toggleCompletionRankDirection() {
     completionLiveRankDirection = completionLiveRankDirection === "asc" ? "desc" : "asc";
+    renderAdminCompletionLive();
+}
+
+function toggleCompletionStudentSortDirection() {
+    completionLiveStudentSortDirection = completionLiveStudentSortDirection === "asc" ? "desc" : "asc";
     renderAdminCompletionLive();
 }
 
@@ -4355,29 +4483,42 @@ function completionTopicStatusButton(topicKey, state, count, label, style) {
     return `<button type="button" onclick="openCompletionStatusStudents(decodeURIComponent('${encodeURIComponent(topicKey)}'),'${state}')" class="inline-flex min-w-[3rem] items-center justify-center rounded-full px-3 py-1.5 text-xs font-black ${style}" aria-label="查看${label}學生名單">${count}</button>`;
 }
 
+function sortCompletionStudentRows(rows) {
+    const stateOrder = { "not-started": 0, "progress": 1, "completed": 2 };
+    const direction = completionLiveStudentSortDirection === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => direction * (a.pct - b.pct)
+        || direction * (stateOrder[a.state] - stateOrder[b.state])
+        || a.className.localeCompare(b.className, "zh-TW", { numeric: true })
+        || a.studentId.localeCompare(b.studentId, "zh-TW", { numeric: true }));
+}
+
 function renderCompletionStudentRows(rows, selectedTopics) {
     const list = document.getElementById("completion-live-list");
     if (!list) return;
-    const stateOrder = { "not-started": 0, "progress": 1, "completed": 2 };
     const stateView = {
         completed: ["已完成", "bg-green-100 text-green-700"],
         progress: ["練習中", "bg-amber-100 text-amber-700"],
         "not-started": ["尚未練習", "bg-rose-100 text-rose-700"]
     };
-    const sorted = [...rows].sort((a, b) => stateOrder[a.state] - stateOrder[b.state]
-        || a.className.localeCompare(b.className, "zh-TW", { numeric: true })
-        || a.studentId.localeCompare(b.studentId, "zh-TW", { numeric: true }));
+    const sorted = sortCompletionStudentRows(rows);
+    const sortIcon = document.getElementById("completion-live-student-sort-icon");
+    const sortButton = document.getElementById("completion-live-student-sort-btn");
+    if (sortIcon) sortIcon.textContent = completionLiveStudentSortDirection === "asc" ? "↑" : "↓";
+    if (sortButton) sortButton.title = completionLiveStudentSortDirection === "asc" ? "目前由低到高，點擊改為由高到低" : "目前由高到低，點擊改為由低到高";
     list.innerHTML = sorted.map(row => {
         const [stateLabel, stateClass] = stateView[row.state];
         const completionText = selectedTopics.length > 1 ? `${row.completed} / ${row.total}（${row.pct}%）` : (row.state === "completed" ? "1 / 1（100%）" : "0 / 1（0%）");
         const bestText = selectedTopics.length > 1 ? "—" : (row.best === null || row.best === undefined ? "—" : `${Number(row.best)} 分`);
-        const missingText = row.missingNames.length ? row.missingNames.join("、") : "—";
+        const missingCount = row.missingNames.length;
+        const missingView = missingCount
+            ? `<button type="button" onclick="openCompletionMissingTopics(decodeURIComponent('${encodeURIComponent(row.studentId)}'))" class="inline-flex items-center justify-center rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 px-3 py-1.5 text-xs font-black" aria-label="查看 ${missingCount} 個尚缺單元">${missingCount} 個</button>`
+            : '<span class="inline-flex items-center justify-center rounded-full bg-green-100 text-green-700 px-3 py-1.5 text-xs font-black">0 個</span>';
         return `<tr class="hover:bg-gray-50">
             <td class="px-4 py-3"><p class="font-bold text-gray-800">${escapeAdminScore(completionVisibleName(row.name))}</p><p class="text-xs text-gray-400">${escapeAdminScore(row.studentId)}</p></td>
             <td class="px-3 py-3 text-gray-600">${escapeAdminScore(row.className)}</td>
             <td class="px-3 py-3 text-center"><span class="inline-block text-xs font-bold px-2 py-1 rounded-full ${stateClass}">${stateLabel}</span><p class="text-xs text-gray-500 mt-1">${completionText}</p></td>
             <td class="px-3 py-3 text-center font-bold text-gray-700">${bestText}</td>
-            <td class="px-3 py-3 text-xs text-gray-600 max-w-[320px] whitespace-normal">${escapeAdminScore(missingText)}</td>
+            <td class="px-3 py-3 text-center">${missingView}</td>
             <td class="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">${row.updatedMillis ? fmtTaipeiAdmin(new Date(row.updatedMillis)) : "—"}</td>
         </tr>`;
     }).join("");
@@ -4390,7 +4531,7 @@ function completionTopicRanking(rows, selectedTopics) {
         const states = { completed: [], progress: [], "not-started": [] };
         let updatedMillis = 0;
         rows.forEach(row => {
-            const result = row.topicResults.find(item => item.topicKey === topicKey);
+            const result = (Array.isArray(row.topicResults) ? row.topicResults : []).find(item => item.topicKey === topicKey);
             const state = result?.passed ? "completed" : (result?.attempted ? "progress" : "not-started");
             states[state].push(row);
             updatedMillis = Math.max(updatedMillis, Number(result?.updatedMillis || 0));
@@ -4452,7 +4593,7 @@ function openCompletionStatusStudents(topicKey, state) {
     };
     const [label, textClass, rowClass] = stateView[state] || stateView["not-started"];
     const students = completionLiveComputedRows.filter(row => {
-        const result = row.topicResults.find(item => item.topicKey === topicKey);
+        const result = (Array.isArray(row.topicResults) ? row.topicResults : []).find(item => item.topicKey === topicKey);
         return (result?.passed ? "completed" : (result?.attempted ? "progress" : "not-started")) === state;
     }).sort((a, b) => a.className.localeCompare(b.className, "zh-TW", { numeric: true })
         || a.studentId.localeCompare(b.studentId, "zh-TW", { numeric: true }));
@@ -4476,12 +4617,43 @@ function closeCompletionStatusStudents() {
     completionStatusModalContext = null;
 }
 
+function openCompletionMissingTopics(studentId) {
+    const student = completionLiveComputedRows.find(row => row.studentId === String(studentId));
+    if (!student) {
+        closeCompletionMissingTopics();
+        return;
+    }
+    completionMissingModalStudentId = student.studentId;
+    const title = document.getElementById("completion-missing-topics-title");
+    const subtitle = document.getElementById("completion-missing-topics-subtitle");
+    const list = document.getElementById("completion-missing-topics-list");
+    const modal = document.getElementById("completion-missing-topics-modal");
+    if (title) title.textContent = `${completionVisibleName(student.name)}的尚缺單元`;
+    if (subtitle) subtitle.textContent = `${student.className} · ${student.studentId} · 共 ${student.missingNames.length} 個`;
+    if (list) list.innerHTML = student.missingNames.map((name, index) => `<div class="flex items-start gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+        <span class="shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full bg-amber-200 text-xs font-black text-amber-800">${index + 1}</span>
+        <p class="text-sm font-semibold text-gray-700 whitespace-normal">${escapeAdminScore(name)}</p>
+    </div>`).join("") || '<p class="text-center text-sm text-green-600 py-8">目前所選單元均已完成</p>';
+    if (modal) modal.style.display = "flex";
+}
+
+function closeCompletionMissingTopics() {
+    const modal = document.getElementById("completion-missing-topics-modal");
+    if (modal) modal.style.display = "none";
+    completionMissingModalStudentId = null;
+}
+
+function handleCompletionMissingTopicsBackdrop(event) {
+    if (event?.target?.id === "completion-missing-topics-modal") closeCompletionMissingTopics();
+}
+
 function handleCompletionStatusModalBackdrop(event) {
     if (event?.target?.id === "completion-status-students-modal") closeCompletionStatusStudents();
 }
 
 document.addEventListener("keydown", event => {
     if (event.key === "Escape" && completionStatusModalContext) closeCompletionStatusStudents();
+    if (event.key === "Escape" && completionMissingModalStudentId) closeCompletionMissingTopics();
 });
 
 function renderAdminCompletionLive() {
@@ -4492,9 +4664,14 @@ function renderAdminCompletionLive() {
     if (!status || !studentWrap || !topicWrap || !summary) return;
     const subjectKey = document.getElementById("completion-live-subject")?.value || "";
     if (!subjectKey) {
+        completionLiveAvailableStudents = [];
+        completionLiveSelectedStudentIds.clear();
+        completionLivePreparedStudentSubject = null;
+        renderCompletionStudentMenu();
         completionLiveComputedRows = [];
         completionLiveSelectedTopics = [];
         closeCompletionStatusStudents();
+        closeCompletionMissingTopics();
         status.textContent = "請先選擇科目";
         status.classList.remove("hidden");
         studentWrap.classList.add("hidden");
@@ -4508,6 +4685,7 @@ function renderAdminCompletionLive() {
         completionLiveComputedRows = [];
         completionLiveSelectedTopics = [];
         closeCompletionStatusStudents();
+        closeCompletionMissingTopics();
         status.textContent = "請按「更新資料」讀取目前完成度";
         status.classList.remove("hidden");
         studentWrap.classList.add("hidden");
@@ -4524,6 +4702,7 @@ function renderAdminCompletionLive() {
         completionLiveComputedRows = [];
         completionLiveSelectedTopics = [];
         closeCompletionStatusStudents();
+        closeCompletionMissingTopics();
         status.textContent = allSubjectTopics.length ? "請至少選擇一個單元" : "此科目尚未設定完成度單元";
         status.classList.remove("hidden");
         studentWrap.classList.add("hidden");
@@ -4538,11 +4717,14 @@ function renderAdminCompletionLive() {
     const selectedSubjectId = String(selectedTopic?.subjectId || "").trim();
     const passScore = Number(completionSettings?.passScore || 80);
     const keyword = String(document.getElementById("completion-live-search")?.value || "").trim().toLowerCase();
-    const computed = completionDashboardRoster()
+    const eligibleStudents = completionDashboardRoster()
         .filter(student => {
             const ids = completionDashboardStudentSubjectIds(student);
             return !selectedSubjectId || ids.length === 0 || ids.includes(selectedSubjectId);
-        })
+        });
+    prepareCompletionLiveStudents(eligibleStudents);
+    const selectedStudentIds = completionLiveSelectedStudentIds;
+    const computed = eligibleStudents
         .map(student => {
             const studentId = String(student.studentId || student.id || "");
             const progress = student.progress || adminCompletionProgressMap.get(studentId) || null;
@@ -4569,10 +4751,11 @@ function renderAdminCompletionLive() {
                 studentId,
                 name: String(student.name || student.studentName || progress?.name || ""),
                 className: String(student.className || student.class || progress?.className || "—"),
-                completed, attempted, total, pct, state, best, missingNames, updatedMillis
+                completed, attempted, total, pct, state, best, missingNames, updatedMillis, topicResults
             };
         })
-        .filter(row => !keyword || `${row.studentId} ${row.name} ${row.className}`.toLowerCase().includes(keyword));
+        .filter(row => selectedStudentIds.has(row.studentId)
+            && (!keyword || `${row.studentId} ${row.name} ${row.className}`.toLowerCase().includes(keyword)));
 
     const allCounts = {
         total: computed.length,
@@ -4598,7 +4781,7 @@ function renderAdminCompletionLive() {
     const cacheLabel = traffic.cacheStored === false ? "｜資料超過快取限制，本次未快取" : "";
     status.textContent = computed.length
         ? `資料時間：${fmtTaipeiAdmin(adminCompletionLoadedAt)}｜${sourceLabel}｜Firestore reads ${Number(traffic.firestoreDocumentsRead || 0)}｜來源 ${Number(traffic.sourceDocumentCount || adminCompletionProgressMap.size)} 份｜傳輸約 ${payloadKb} KB${cacheLabel}`
-        : "沒有符合搜尋條件的學生";
+        : (completionLiveSelectedStudentIds.size === 0 ? "請至少選擇一位學生" : "沒有符合搜尋條件的學生");
     status.classList.remove("hidden");
     status.className = "text-center text-xs text-gray-400 py-3";
     const hasRows = computed.length > 0;
@@ -4608,6 +4791,9 @@ function renderAdminCompletionLive() {
     if (completionStatusModalContext) {
         const { topicKey, state } = completionStatusModalContext;
         openCompletionStatusStudents(topicKey, state);
+    }
+    if (completionMissingModalStudentId) {
+        openCompletionMissingTopics(completionMissingModalStudentId);
     }
 }
 
@@ -4627,10 +4813,12 @@ function renderRecentAnswers() {
     if (!list || !recentAnswersLoaded) return;
     const subjectKey = document.getElementById("completion-live-subject")?.value || "";
     const keyword = String(document.getElementById("completion-live-search")?.value || "").trim().toLowerCase();
+    const selectedStudentIds = completionLiveSelectedStudentIds;
     const selectedKeys = new Set(completionLiveSelectedTopics.map(topic => completionCompatibilityKey(completionDashboardTopicName(topic))));
     const filtered = (!subjectKey || selectedKeys.size === 0) ? [] : recentAnswersItems.filter(item => {
         const topicMatches = selectedKeys.has(completionCompatibilityKey(item.topic));
-        const studentMatches = !keyword || `${item.studentId || ""} ${item.name || ""} ${item.className || ""}`.toLowerCase().includes(keyword);
+        const studentMatches = selectedStudentIds.has(String(item.studentId || ""))
+            && (!keyword || `${item.studentId || ""} ${item.name || ""} ${item.className || ""}`.toLowerCase().includes(keyword));
         return topicMatches && studentMatches;
     });
     list.innerHTML = filtered.map(item => {
