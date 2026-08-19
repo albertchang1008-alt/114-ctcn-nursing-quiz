@@ -644,3 +644,19 @@ FIREBASE_PRIVATE_KEY = JSON 內 private_key 的完整內容
 - 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.933`。
 - 本版不變更 Firestore collections、rules、indexes 或 GAS 資料介面。
 - 需在單科目、多科目、全部完成及部分未完成帳號驗證三層導覽與手機版面。
+
+# v1.934 - 2026-08-19
+
+## Ch08 顯示相容修正
+
+- 查明學生原始作答紀錄與正式最高分正確；`0/N`、`0%` 是前端章節題目尚未載入卻直接以空陣列計算所致。
+- 查明 Ch08 現行及歷史 `topicId` 存在重複或異動，不適合作為八個單元的唯一識別。
+- 新增 `IMM-CH08-01` 至 `IMM-CH08-08` 前端相容碼，以章節編號對照新舊名稱；第二單元舊名稱相容到「第二型過敏」。
+- 完成度、最高分、待完成看板與歷次成績以相容名稱鍵優先；Ch08 不再使用重複 `topicId` fallback。
+- 題目練習率以章節實際題目 ID 與 `attemptedQuestions` 交集計算，並新增讀取中／無法讀取狀態。
+- 未寫入或遷移 `studentProgress`、`answerBatches`、`scoreSummaries` 等歷史資料。
+
+## 版本與驗收
+
+- 學生端、後台、Firebase fallback、GAS `APP_VERSION` 與資源 cachebuster 同步更新為 `v1.934`。
+- 完整證據、對照表與後續預防方案記錄於 `CH08_COMPATIBILITY_DECISION_2026-08-19.md`。

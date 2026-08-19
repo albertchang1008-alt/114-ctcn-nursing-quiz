@@ -9,8 +9,8 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"></script>
-    <script src="firebase-config.js?v=1933"></script>
-    <script src="firebase-v1685.js?v=1933"></script>
+    <script src="firebase-config.js?v=1934"></script>
+    <script src="firebase-v1685.js?v=1934"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .option-btn { transition: all 0.2s ease-in-out; }
@@ -770,7 +770,7 @@
 <!-- ★ 教師後台入口：藏在頁面底部，兩個「©」中間那個才是觸發點 -->
 <footer class="text-center py-4 mt-auto select-none">
     <span class="text-gray-200 text-xs">© 題庫系統</span>
-    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.933 ／ 科目三層導覽">v1.933</span>
+    <span class="text-gray-200 text-xs ml-2" id="version-badge" title="前端 v1.934 ／ Ch08 相容修正">v1.934</span>
     <button onclick="location.href='admin.html'"
             class="text-gray-200 text-xs ml-px hover:text-gray-300 focus:outline-none cursor-default"
             tabindex="-1" aria-hidden="true">©</button>
@@ -1673,6 +1673,130 @@ let pendingQuizTopic   = "";
 let pendingQuizTopicMeta = null;
 let allQuestionsForMenu = [];
 const topicQuestionsCache = {};
+const topicQuestionLoadState = {};
+const topicQuestionLoadPromises = {};
+let practiceQuestionObserver = null;
+
+// v1.934 短期相容層：Ch08 曾改過名稱且 topicId 有重複，故以前端穩定單元碼辨識。
+// 只影響查找與顯示，不回寫或搬移任何學生歷史紀錄。
+const CH08_TOPIC_COMPATIBILITY = Object.freeze({
+    "IMM-CH08-01": "第一型過敏",
+    "IMM-CH08-02": "第二型過敏",
+    "IMM-CH08-03": "第三型過敏",
+    "IMM-CH08-04": "第四型過敏",
+    "IMM-CH08-05": "自體免疫疾病",
+    "IMM-CH08-06": "移植免疫",
+    "IMM-CH08-07": "腫瘤免疫",
+    "IMM-CH08-08": "免疫缺陷"
+});
+
+function normalizeTopicIdentity(value) {
+    return String(value || "").normalize("NFKC").replace(/[－–—]/g, "-").replace(/\s+/g, "").toLowerCase();
+}
+
+function getCh08UnitCode(value) {
+    const normalized = normalizeTopicIdentity(value);
+    const match = normalized.match(/過敏與腫瘤免疫-0?([1-8])(?:[.。]|$)/);
+    return match ? `IMM-CH08-${String(match[1]).padStart(2, "0")}` : "";
+}
+
+function getTopicCompatibilityKey(value) {
+    const ch08Code = getCh08UnitCode(value);
+    return ch08Code || `name:${normalizeTopicIdentity(value)}`;
+}
+
+function getCompatibleTopicDisplayName(value) {
+    const text = String(value || "未分類");
+    if (getCh08UnitCode(text) !== "IMM-CH08-02") return text;
+    return text.replace(/第二型過敏\s*[（(]\s*血清病非\s*II\s*[）)]/gi, "第二型過敏");
+}
+
+function configuredTopicKeySet(settings = completionSettings) {
+    return new Set((settings?.completionTopics || []).map(getTopicCompatibilityKey).filter(Boolean));
+}
+
+function isConfiguredCompletionTopic(topicMeta, settings = completionSettings) {
+    const nameKeys = configuredTopicKeySet(settings);
+    const topicKey = getTopicCompatibilityKey(topicMeta?.name);
+    if (nameKeys.has(topicKey)) return true;
+    // Ch08 必須以單元碼／名稱判定；重複的 topicId 不可拿來擴大完成度範圍。
+    if (getCh08UnitCode(topicMeta?.name) && nameKeys.size > 0) return false;
+    return Boolean(topicMeta?.topicId && new Set(settings?.completionTopicIds || []).has(topicMeta.topicId));
+}
+
+function findCompatibleProgress(topicMeta, data = myProgressCache, passScore = 80) {
+    const topicName = String(topicMeta?.name || "").trim();
+    const topicId = String(topicMeta?.topicId || "").trim();
+    const targetKey = getTopicCompatibilityKey(topicName);
+    const all = [...(Array.isArray(data?.details) ? data.details : []), ...Object.values(data?.topicProgress || {})];
+    const matches = all.filter(item => {
+        const names = [item?.topic, item?.topicName, item?.topicDisplayName].filter(Boolean);
+        if (names.some(name => getTopicCompatibilityKey(name) === targetKey)) return true;
+        // Ch08 禁用 topicId fallback，避免 01/04/05/06 或 02/08 被誤認成同一單元。
+        return !getCh08UnitCode(topicName) && topicId && String(item?.topicId || "").trim() === topicId;
+    });
+    if (!matches.length) return null;
+    const bestItem = matches.reduce((best, item) => {
+        if (item?.best === null || item?.best === undefined) return best;
+        if (!best || Number(item.best) > Number(best.best)) return item;
+        return best;
+    }, null);
+    const source = bestItem || matches[0];
+    const best = bestItem?.best ?? null;
+    return {
+        ...source,
+        best,
+        passed: best !== null && Number(best) >= Number(passScore || 80),
+        avgSec: source?.avgSec ?? null,
+        lastScore: source?.lastScore ?? null
+    };
+}
+
+function topicQuestionCacheKey(topicMeta) {
+    return String(topicMeta?.bundleId || topicMeta?.chapterBundleId || topicMeta?.name || "").trim();
+}
+
+async function ensureTopicQuestionsForPractice(topicMeta) {
+    const cacheKey = topicQuestionCacheKey(topicMeta);
+    if (!cacheKey || Array.isArray(topicQuestionsCache[cacheKey])) return;
+    if (topicQuestionLoadPromises[cacheKey]) return topicQuestionLoadPromises[cacheKey];
+    topicQuestionLoadState[cacheKey] = "loading";
+    topicQuestionLoadPromises[cacheKey] = window.Firebase1685.loadChapterQuestions(topicMeta)
+        .then(list => {
+            const questions = Array.isArray(list) ? list : [];
+            topicQuestionsCache[cacheKey] = questions;
+            topicQuestionsCache[topicMeta.name] = questions;
+            topicQuestionLoadState[cacheKey] = "loaded";
+        })
+        .catch(err => {
+            topicQuestionLoadState[cacheKey] = "error";
+            console.warn("題目練習率載入失敗：", topicMeta?.name, err);
+        })
+        .finally(() => {
+            delete topicQuestionLoadPromises[cacheKey];
+            if (isLoggedIn && topicMenuView === "subject") renderTopics();
+        });
+    return topicQuestionLoadPromises[cacheKey];
+}
+
+function observePracticeQuestionLoad(row, topicMeta) {
+    const cacheKey = topicQuestionCacheKey(topicMeta);
+    if (!cacheKey || Array.isArray(topicQuestionsCache[cacheKey]) || topicQuestionLoadState[cacheKey] === "error") return;
+    if (!("IntersectionObserver" in window)) {
+        ensureTopicQuestionsForPractice(topicMeta);
+        return;
+    }
+    if (!practiceQuestionObserver) {
+        practiceQuestionObserver = new IntersectionObserver(entries => {
+            entries.filter(entry => entry.isIntersecting).forEach(entry => {
+                practiceQuestionObserver.unobserve(entry.target);
+                ensureTopicQuestionsForPractice(entry.target._practiceTopicMeta);
+            });
+        }, { rootMargin: "240px 0px" });
+    }
+    row._practiceTopicMeta = topicMeta;
+    practiceQuestionObserver.observe(row);
+}
 
 // ── Chart 實例 ──
 let progressChartInst = null;
@@ -1966,6 +2090,10 @@ function openCurrentRequiredView() {
 function renderTopics() {
     const div = document.getElementById("topic-list");
     if (!div) { console.error("❌ topic-list 元素不存在"); return; }
+    if (practiceQuestionObserver) {
+        practiceQuestionObserver.disconnect();
+        practiceQuestionObserver = null;
+    }
     div.innerHTML = "";
     const subjectList = document.getElementById("subject-list");
     const subjectLabel = document.getElementById("selected-subject-label");
@@ -2071,18 +2199,7 @@ function renderTopics() {
     if (topicMenuView === "required") return;
 
     // 取得各分類完成度資訊（含平均每題用時）
-    const compMap = {};
-    const compIdMap = {};
     const currentCompletionPassScore = Number(completionSettings?.passScore || 80);
-    if (window._completionDetails) {
-        window._completionDetails.forEach(d => {
-            const currentPassed = d.best !== null && d.best !== undefined && Number(d.best) >= currentCompletionPassScore;
-            compMap[d.topic] = { best: d.best, passed: currentPassed, avgSec: d.avgSec || null, lastScore: d.lastScore ?? null };
-            if (d.topicId) compIdMap[d.topicId] = { best: d.best, passed: currentPassed, avgSec: d.avgSec || null, lastScore: d.lastScore ?? null };
-        });
-    }
-    const configuredCompletionNames = new Set(completionSettings?.completionTopics || []);
-    const configuredCompletionIds = new Set(completionSettings?.completionTopicIds || []);
     const attemptedMap = myProgressCache?.attemptedQuestions || {};
     const questionsByTopic = {};
     (allQuestionsForMenu || []).forEach(q => {
@@ -2098,12 +2215,23 @@ function renderTopics() {
         const topic = topicMeta.name;
         const color = topicMeta.color;
         const hex   = getColor(color);
-        const comp  = (topicMeta.topicId && compIdMap[topicMeta.topicId]) || compMap[topic];
-        const questionList = questionsByTopic[topic] || [];
-        const totalQuestions = Number(topicMeta.count || questionList.length || 0);
-        const attemptedCount = questionList.filter((q, qIdx) => attemptedMap[getQuestionKey(q, qIdx)]).length;
-        const practicePct = totalQuestions > 0 ? Math.round((attemptedCount / totalQuestions) * 100) : 0;
-        const isCompletionTopic = (topicMeta.topicId && configuredCompletionIds.has(topicMeta.topicId)) || configuredCompletionNames.has(topic);
+        const comp  = findCompatibleProgress(topicMeta, myProgressCache, currentCompletionPassScore);
+        const cacheKey = topicQuestionCacheKey(topicMeta);
+        const cachedQuestions = topicQuestionsCache[cacheKey] || topicQuestionsCache[topic];
+        const fallbackQuestions = questionsByTopic[topic] || [];
+        const questionList = Array.isArray(cachedQuestions) ? cachedQuestions : fallbackQuestions;
+        const questionsLoaded = Array.isArray(cachedQuestions) || fallbackQuestions.length > 0;
+        const loadFailed = topicQuestionLoadState[cacheKey] === "error";
+        const totalQuestions = Number((questionsLoaded && questionList.length) || topicMeta.count || 0);
+        const attemptedCount = questionsLoaded
+            ? questionList.filter((q, qIdx) => hasAttemptedQuestion(attemptedMap, getQuestionKey(q, qIdx))).length
+            : null;
+        const practicePct = attemptedCount !== null && totalQuestions > 0
+            ? Math.min(100, Math.round((attemptedCount / totalQuestions) * 100))
+            : null;
+        const practiceCountLabel = loadFailed ? `已做 — / ${totalQuestions} 題` : (attemptedCount === null ? `已做 — / ${totalQuestions} 題` : `已做 ${attemptedCount} / ${totalQuestions} 題`);
+        const practiceRateLabel = loadFailed ? "題目練習率 無法讀取" : (practicePct === null ? "題目練習率 讀取中…" : `題目練習率 ${practicePct}%`);
+        const isCompletionTopic = isConfiguredCompletionTopic(topicMeta, completionSettings);
         const completionStateLabel = !isCompletionTopic ? "未納入完成度" : (comp?.passed ? "已完成" : "未完成");
         const completionStateStyle = !isCompletionTopic
             ? "color:#94a3b8;"
@@ -2155,14 +2283,14 @@ function renderTopics() {
                     <div class="chapter-title" title="${escapeHtml(displayTitle)}"
                         style="font-size:14px;font-weight:700;color:#1e293b;line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-height:2.9em;">${escapeHtml(displayTitle)}</div>
                     <div class="chapter-meta" style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:11px;color:#64748b;flex-wrap:wrap;">
-                        <span>已做 ${attemptedCount} / ${totalQuestions} 題</span>
-                        <span>題目練習率 ${practicePct}%</span>
+                        <span>${practiceCountLabel}</span>
+                        <span>${practiceRateLabel}</span>
                         <span style="${completionStateStyle}">完成狀態 ${completionStateLabel}</span>
                         ${comp?.best != null ? `<span>最高 ${comp.best} 分</span>` : `<span>尚未測驗</span>`}
                         ${timeLabel}
                     </div>
                     <div class="chapter-track" style="height:5px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin-top:7px;">
-                        <div class="chapter-fill" style="height:5px;width:${practicePct}%;background:${hex};border-radius:999px;"></div>
+                        <div class="chapter-fill" style="height:5px;width:${practicePct ?? 0}%;background:${hex};border-radius:999px;"></div>
                     </div>
                     ${fcHint}
                 </div>
@@ -2190,6 +2318,7 @@ function renderTopics() {
         row.querySelector(".quiz-btn").onclick = () => openQuizCountModal(topic, topicMeta);
         row.querySelector(".fc-btn").onclick   = (e) => { e.stopPropagation(); openFlashcardModal(topic); };
         div.appendChild(row);
+        observePracticeQuestionLoad(row, topicMeta);
         } catch(err) {
             console.error("❌ 章節 " + idx + " 渲染失敗：", err);
         }
@@ -2220,7 +2349,15 @@ function getQuestionKey(q, idx = 0) {
     return String(q?.firebaseQuestionId || q?.docId || q?.id || q?.questionId || `Q_${idx}`);
 }
 
-function getTopicQuestionsFromCache(topic) {
+function hasAttemptedQuestion(attemptedMap, questionKey) {
+    return Object.prototype.hasOwnProperty.call(attemptedMap || {}, questionKey);
+}
+
+function getTopicQuestionsFromCache(topic, topicMeta = null) {
+    const cacheKey = topicQuestionCacheKey(topicMeta || { name: topic });
+    if (topic !== "綜合練習" && Array.isArray(topicQuestionsCache[cacheKey])) {
+        return topicQuestionsCache[cacheKey];
+    }
     if (topic !== "綜合練習" && Array.isArray(topicQuestionsCache[topic])) {
         return topicQuestionsCache[topic];
     }
@@ -2231,9 +2368,9 @@ function getTopicQuestionsFromCache(topic) {
 }
 
 function getTopicQuestionStats(topic, topicMeta = null) {
-    const questions = getTopicQuestionsFromCache(topic);
+    const questions = getTopicQuestionsFromCache(topic, topicMeta);
     const attemptedMap = myProgressCache?.attemptedQuestions || {};
-    const attempted = questions.filter((q, idx) => attemptedMap[getQuestionKey(q, idx)]).length;
+    const attempted = questions.filter((q, idx) => hasAttemptedQuestion(attemptedMap, getQuestionKey(q, idx))).length;
     const metadataTotal = Number(topicMeta?.count || 0);
     const total = questions.length || metadataTotal;
     return {
@@ -2290,6 +2427,7 @@ async function openQuizCountModal(topic, topicMeta = null) {
         if (!myProgressCache && studentId) await loadMyCompletion();
         const chapterQuestions = await window.Firebase1685.loadChapterQuestions(pendingQuizTopicMeta || topic);
         topicQuestionsCache[topic] = chapterQuestions || [];
+        topicQuestionsCache[topicQuestionCacheKey(pendingQuizTopicMeta || { name: topic })] = chapterQuestions || [];
         if (pendingQuizTopic !== topic) return;
         // 使用實際章節文件重新計算，包含準確的已作答／未作答數。
         renderQuizCountStats(modal, statsBox, getTopicQuestionStats(topic, pendingQuizTopicMeta));
@@ -2312,8 +2450,8 @@ async function startConfiguredQuiz(count) {
 function orderQuestionsForQuiz(data, requestedCount) {
     const attemptedMap = myProgressCache?.attemptedQuestions || {};
     const tagged = (data || []).map((q, idx) => ({ q, key: getQuestionKey(q, idx) }));
-    const unseen = tagged.filter(item => !attemptedMap[item.key]).map(item => item.q);
-    const seen = tagged.filter(item => attemptedMap[item.key]).map(item => item.q);
+    const unseen = tagged.filter(item => !hasAttemptedQuestion(attemptedMap, item.key)).map(item => item.q);
+    const seen = tagged.filter(item => hasAttemptedQuestion(attemptedMap, item.key)).map(item => item.q);
     const ordered = [...shuffle([...unseen]), ...shuffle([...seen])];
     if (requestedCount === "all") return ordered;
     const limit = Number(requestedCount);
@@ -3425,13 +3563,13 @@ function getStudentCompletionScope() {
         ? (topicsData || []).filter(topic => allowedSubjectSet.has(String(topic.subjectId || "").trim()))
         : [];
     const studentTopicIds = new Set(studentTopics.map(topic => topic.topicId).filter(Boolean));
-    const studentTopicNames = new Set(studentTopics.map(topic => topic.name).filter(Boolean));
+    const studentTopicNames = new Set(studentTopics.map(topic => getTopicCompatibilityKey(topic.name)).filter(Boolean));
     return {
         subjectIds: [...studentSubjectIds],
         completionScopeResolved: true,
         passScore: completionSettings?.passScore || 80,
         completionTopicIds: (completionSettings?.completionTopicIds || []).filter(id => studentTopicIds.has(id)),
-        completionTopics: (completionSettings?.completionTopics || []).filter(name => studentTopicNames.has(name))
+        completionTopics: (completionSettings?.completionTopics || []).filter(name => studentTopicNames.has(getTopicCompatibilityKey(name)))
     };
 }
 
@@ -3446,28 +3584,31 @@ function scoreHistoryErrorText(err) {
 
 function shouldShowScoreHistoryItem(item) {
     const selectedIds = new Set((completionSettings?.scoreHistoryTopicIds || []).map(value => String(value || "").trim()).filter(Boolean));
-    const selectedNames = new Set((completionSettings?.scoreHistoryTopics || []).map(value => String(value || "").trim()).filter(Boolean));
+    const selectedNames = new Set((completionSettings?.scoreHistoryTopics || []).map(getTopicCompatibilityKey).filter(Boolean));
     if (selectedIds.size === 0 && selectedNames.size === 0) return true;
     const topicId = String(item?.topicId || "").trim();
     const names = [item?.topicDisplayName, item?.topicName, item?.topic]
         .map(value => String(value || "").trim()).filter(Boolean);
-    return (topicId && selectedIds.has(topicId)) || names.some(name => selectedNames.has(name));
+    const isCh08 = names.some(getCh08UnitCode);
+    return names.some(name => selectedNames.has(getTopicCompatibilityKey(name)))
+        || (!isCh08 && topicId && selectedIds.has(topicId));
 }
 
 function scoreHistorySubjectLabel(item) {
     const direct = String(item?.subjectName || item?.subjectId || "").trim();
     if (direct) return direct;
     const topicId = String(item?.topicId || "").trim();
-    const names = new Set([item?.topicDisplayName, item?.topicName, item?.topic].map(value => String(value || "").trim()).filter(Boolean));
-    const topic = (topicsData || []).find(entry =>
-        (topicId && String(entry?.topicId || "").trim() === topicId) || names.has(String(entry?.name || entry?.topic || "").trim())
-    );
+    const names = [item?.topicDisplayName, item?.topicName, item?.topic].map(value => String(value || "").trim()).filter(Boolean);
+    const nameKeys = new Set(names.map(getTopicCompatibilityKey));
+    const isCh08 = names.some(getCh08UnitCode);
+    const topic = (topicsData || []).find(entry => nameKeys.has(getTopicCompatibilityKey(entry?.name || entry?.topic)))
+        || (!isCh08 ? (topicsData || []).find(entry => topicId && String(entry?.topicId || "").trim() === topicId) : null);
     return String(topic?.subjectName || topic?.subjectId || "未設定科目").trim();
 }
 
 function scoreHistoryCompletionState(item) {
     const configuredIds = new Set((completionSettings?.completionTopicIds || []).map(value => String(value || "").trim()).filter(Boolean));
-    const configuredNames = new Set((completionSettings?.completionTopics || []).map(value => String(value || "").trim()).filter(Boolean));
+    const configuredNames = configuredTopicKeySet(completionSettings);
     if (configuredIds.size === 0 && configuredNames.size === 0) {
         return { label: "未設定完成度", className: "bg-gray-100 text-gray-500" };
     }
@@ -3475,15 +3616,13 @@ function scoreHistoryCompletionState(item) {
     const topicId = String(item?.topicId || "").trim();
     const names = [item?.topicDisplayName, item?.topicName, item?.topic]
         .map(value => String(value || "").trim()).filter(Boolean);
-    const inScope = (topicId && configuredIds.has(topicId)) || names.some(name => configuredNames.has(name));
+    const isCh08 = names.some(getCh08UnitCode);
+    const inScope = names.some(name => configuredNames.has(getTopicCompatibilityKey(name)))
+        || (!isCh08 && topicId && configuredIds.has(topicId));
     if (!inScope) return { label: "未納入完成度", className: "bg-gray-100 text-gray-500" };
 
-    const progressValues = Object.values(myProgressCache?.topicProgress || {});
-    const details = Array.isArray(myProgressCache?.details) ? myProgressCache.details : [];
-    const progress = (topicId && myProgressCache?.topicProgress?.[topicId])
-        || (topicId && progressValues.find(entry => String(entry?.topicId || "").trim() === topicId))
-        || details.find(entry => (topicId && String(entry?.topicId || "").trim() === topicId)
-            || names.includes(String(entry?.topic || entry?.topicName || "").trim()));
+    const progress = findCompatibleProgress({ name: names[0] || "", topicId }, myProgressCache,
+        Number(myProgressCache?.passScore || completionSettings?.passScore || 80));
     const passScore = Number(myProgressCache?.passScore || completionSettings?.passScore || 80);
     const best = progress?.best;
     const passed = best !== null && best !== undefined && Number(best) >= passScore;
@@ -3569,7 +3708,7 @@ function appendScoreHistoryRows(docs) {
             }
         };
         const subjectLabel = scoreHistorySubjectLabel(item);
-        const topicLabel = item.topicDisplayName || item.topicName || "未分類";
+        const topicLabel = getCompatibleTopicDisplayName(item.topicDisplayName || item.topicName || item.topic || "未分類");
         const completionState = scoreHistoryCompletionState(item);
         row.innerHTML = `
             <td class="px-4 py-4 align-top">
@@ -3606,10 +3745,11 @@ async function openScoreHistoryDetail(batchId) {
             subjectId: summary.subjectId || batch.subjectId || ""
         });
         const detailCompletionState = scoreHistoryCompletionState({ ...batch, ...summary });
+        const detailTopicLabel = getCompatibleTopicDisplayName(summary.topicDisplayName || batch.topic || "未分類");
         detail.innerHTML = `
             <div class="bg-sky-50 border border-sky-100 rounded-xl p-4 mb-4">
                 <div class="flex items-center justify-between gap-2 mb-1"><p class="text-xs font-semibold text-sky-700">科目｜${escapeScoreHistory(detailSubjectLabel)}</p><span class="text-xs font-bold px-2 py-1 rounded-full whitespace-nowrap ${detailCompletionState.className}">${detailCompletionState.label}</span></div>
-                <div class="flex items-start justify-between gap-3"><div class="min-w-0 flex-1"><p class="score-history-topic-title font-bold text-gray-800" title="${escapeScoreHistory(summary.topicDisplayName || batch.topic || "未分類")}" style="line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-height:2.9em;">單元｜${escapeScoreHistory(summary.topicDisplayName || batch.topic || "未分類")}</p><p class="text-xs text-gray-500 mt-1">${formatTaipeiTime(summary.answeredAt || batch.createdAt || batch.clientCreatedAt)}</p></div><p class="shrink-0 text-3xl font-black text-sky-600">${Number(batch.score || summary.score || 0)} 分</p></div>
+                <div class="flex items-start justify-between gap-3"><div class="min-w-0 flex-1"><p class="score-history-topic-title font-bold text-gray-800" title="${escapeScoreHistory(detailTopicLabel)}" style="line-height:1.45;overflow:hidden;text-overflow:ellipsis;white-space:normal;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-height:2.9em;">單元｜${escapeScoreHistory(detailTopicLabel)}</p><p class="text-xs text-gray-500 mt-1">${formatTaipeiTime(summary.answeredAt || batch.createdAt || batch.clientCreatedAt)}</p></div><p class="shrink-0 text-3xl font-black text-sky-600">${Number(batch.score || summary.score || 0)} 分</p></div>
                 <p class="text-xs text-gray-500 mt-2">總用時 ${formatDurationSeconds(batch.duration || summary.duration)} · 答對 ${Number(batch.correctCount || 0)} 題 · 答錯 ${Number(batch.wrongCount || 0)} 題</p>
             </div>
             <div class="space-y-3">${rows.map((row, index) => `
@@ -3691,22 +3831,14 @@ function renderCurrentRequiredBoard(data) {
         return;
     }
     const passScore = Number(data?.passScore || completionSettings?.passScore || 80);
-    const configuredIds = new Set(data?.completionTopicIds || completionSettings?.completionTopicIds || []);
-    const configuredNames = new Set(data?.completionTopics || completionSettings?.completionTopics || []);
     const requiredTopics = (topicsData || []).filter(topic =>
         getTopicSubjectKey(topic) === selectedSubjectKey
-        && ((topic?.topicId && configuredIds.has(topic.topicId)) || configuredNames.has(topic?.name))
+        && isConfiguredCompletionTopic(topic, data || completionSettings)
     );
 
-    const progressValues = Object.values(data?.topicProgress || {});
-    const details = Array.isArray(data?.details) ? data.details : [];
     const rows = requiredTopics.map(topic => {
-        const topicId = String(topic?.topicId || "").trim();
         const topicName = String(topic?.name || "未分類").trim();
-        const progress = (topicId && data?.topicProgress?.[topicId])
-            || (topicId && progressValues.find(item => String(item?.topicId || "").trim() === topicId))
-            || details.find(item => (topicId && String(item?.topicId || "").trim() === topicId)
-                || [item?.topic, item?.topicName].map(value => String(value || "").trim()).includes(topicName));
+        const progress = findCompatibleProgress(topic, data, passScore);
         const best = progress?.best;
         const passed = best !== null && best !== undefined && Number(best) >= passScore;
         return { topic, topicName, best, passed };
@@ -3753,17 +3885,15 @@ function renderCurrentRequiredBoard(data) {
 
 function renderMyCompletion(data) {
     const { passScore, completionTopics = [], completionTopicIds = [], details = [] } = data;
-    const visibleTopicIds = new Set((topicsData || []).map(topic => topic.topicId).filter(Boolean));
-    const visibleTopicNames = new Set((topicsData || []).map(topic => topic.name).filter(Boolean));
     const hasAssignedSubjects = studentSubjectIds.length > 0;
-    const completionNameSet = new Set(completionTopics.filter(name => !hasAssignedSubjects || visibleTopicNames.has(name)));
-    const completionIdSet = new Set(completionTopicIds.filter(id => !hasAssignedSubjects || visibleTopicIds.has(id)));
-    const passed = details.filter(d => d.best !== null && d.best !== undefined && Number(d.best) >= Number(passScore || 80) && (
-        completionIdSet.size > 0
-            ? (completionIdSet.has(d.topicId) || completionNameSet.has(d.topic))
-            : completionNameSet.has(d.topic)
-    )).length;
-    const total  = completionIdSet.size || completionNameSet.size;
+    const assignedSubjectSet = new Set(studentSubjectIds);
+    const requiredTopics = (topicsData || []).filter(topic =>
+        (!hasAssignedSubjects || assignedSubjectSet.has(String(topic.subjectId || "").trim()))
+        && isConfiguredCompletionTopic(topic, { completionTopics, completionTopicIds })
+    );
+    const uniqueRequired = [...new Map(requiredTopics.map(topic => [getTopicCompatibilityKey(topic.name), topic])).values()];
+    const passed = uniqueRequired.filter(topic => findCompatibleProgress(topic, data, passScore)?.passed).length;
+    const total = uniqueRequired.length;
     const pct    = total > 0 ? Math.round((passed / total) * 100) : 0;
     const barColor = pct >= 80 ? "#22c55e" : pct >= 50 ? "#0ea5e9" : "#f43f5e";
 
